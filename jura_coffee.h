@@ -99,9 +99,9 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
     result = cmd2jura("IC:");
     hexString = result.substring(3,5);
     hex_to_byte = strtol(hexString.c_str(),NULL,16);
-    trayBit = bitRead(hex_to_byte, 4);
-    tankBit = bitRead(hex_to_byte, 5);
-    if (trayBit == 1) { tray_status = "Missing"; } else { tray_status = "Present"; }
+    trayBit = bitRead(strtol(result.substring(3,5).c_str(), NULL, 16), 4);
+    tankBit = bitRead(strtol(result.substring(5,7).c_str(), NULL, 16), 5);
+    if (trayBit == 1) { tray_status = "Present"; } else { tray_status = "Missing"; }
     if (tankBit == 1) { tank_status = "Fill Tank"; } else { tank_status = "OK"; }
 
     // For Testing
