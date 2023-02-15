@@ -1,4 +1,10 @@
 #include "esphome.h"
+#include "strings.h"
+
+#define bitRead(value, bit) (((value) >> (bit)) & 0x01)
+#define bitSet(value, bit) ((value) |= (1UL << (bit)))
+#define bitClear(value, bit) ((value) &= ~(1UL << (bit)))
+#define bitWrite(value, bit, bitvalue) ((bitvalue) ? bitSet(value, bit) : bitClear(value, bit))
 
 class JuraCoffee : public PollingComponent, public UARTDevice {
  Sensor *xsensor1 {nullptr};
@@ -10,14 +16,12 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
  TextSensor *xsensor7 {nullptr};
 
  public:
-  JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sensor3, Sensor *sensor4, Sensor *sensor5, TextSensor *sensor6, TextSensor *sensor7) : UARTDevice(parent) , xsensor1(sensor1) , xsensor2(sensor2) , xsensor3(sensor3) , xsensor4(sensor4) , xsensor5(sensor5) , xsensor6(sensor6) , xsensor7(sensor7) {}
-
+  JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sensor3, Sensor *sensor4, Sensor *sensor5$
   long num_single_espresso, num_double_espresso, num_coffee, num_double_coffee, num_clean;
   std::string tray_status, tank_status;
 
-  // Jura communication function taken in entirety from cmd2jura.ino, found at https://github.com/hn/jura-coffee-machine
-  String cmd2jura(String outbytes) {
-    String inbytes;
+  // Jura communication function taken in entirety from cmd2jura.ino, found at https://github.com/hn/jura-coffee-machine  std::string cmd2jura(std::string outbytes) {
+    std::string inbytes;
     int w = 0;
 
     while (available()) {
@@ -28,18 +32,18 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
     for (int i = 0; i < outbytes.length(); i++) {
       for (int s = 0; s < 8; s += 2) {
         char rawbyte = 255;
-        bitWrite(rawbyte, 2, bitRead(outbytes.charAt(i), s + 0));
-        bitWrite(rawbyte, 5, bitRead(outbytes.charAt(i), s + 1));
+        bitWrite(rawbyte, 2, bitRead(outbytes.at(i), s + 0));
+        bitWrite(rawbyte, 5, bitRead(outbytes.at(i), s + 1));
         write(rawbyte);
       }
       delay(8);
     }
 
     int s = 0;
-    char inbyte;
-    while (!inbytes.endsWith("\r\n")) {
+    uint8_t inbyte = 0;
+    while (!inbytes.compare(inbytes.length()-1, 1, "\r\n")) {
       if (available()) {
-        byte rawbyte = read();
+        char rawbyte = read();
         bitWrite(inbyte, s + 0, bitRead(rawbyte, 2));
         bitWrite(inbyte, s + 1, bitRead(rawbyte, 5));
         if ((s += 2) >= 8) {
@@ -54,7 +58,7 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
       }
     }
 
-    return inbytes.substring(0, inbytes.length() - 2);
+    return inbytes.substr(0, inbytes.length() - 2);
   }
 
   void setup() override {
@@ -65,8 +69,8 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
   }
 
   void update() override {
-    String result, hexString, substring;
-    byte hex_to_byte;
+    std::string result, hexString, substring;
+    uint8_t hex_to_byte;
     int trayBit, tankBit;
     // For Testing
     // int read_bit0,read_bit1,read_bit2,read_bit3,read_bit4,read_bit5,read_bit6,read_bit7;
@@ -75,36 +79,37 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
     result = cmd2jura("RT:0000");
 
     // Get Single Espressos made
-    substring = result.substring(3,7);
+    substring = result.substr(3,7);
     num_single_espresso = strtol(substring.c_str(),NULL,16);
 
     // Double Espressos made
-    substring = result.substring(7,11);
+    substring = result.substr(7,11);
+    num_double_espresso = strtol(substring.c_str(),NULL,16);
+       // Double Espressos made
+    substring = result.substr(7,11);
     num_double_espresso = strtol(substring.c_str(),NULL,16);
 
     // Coffees made
-    substring = result.substring(11,15);
+    substring = result.substr(11,15);
     num_coffee = strtol(substring.c_str(),NULL,16);
 
     // Double Coffees made
-    substring = result.substring(15,19);
+    substring = result.substr(15,19);
     num_double_coffee = strtol(substring.c_str(),NULL,16);
 
     // Cleanings done
-    substring = result.substring(35,39);
+    substring = result.substr(35,39);
     num_clean = strtol(substring.c_str(),NULL,16);
 
     // Tray & water tank status
-    // Much gratitude to https://www.instructables.com/id/IoT-Enabled-Coffee-Machine/ for figuring out how these bits are stored
-    result = cmd2jura("IC:");
-    hexString = result.substring(3,5);
+    // Much gratitude to https://www.instructables.com/id/IoT-Enabled-Coffee-Machine/ for figuring out how these bits a$    result = cmd2jura("IC:");
+    hexString = result.substr(3,5);
     hex_to_byte = strtol(hexString.c_str(),NULL,16);
-    trayBit = bitRead(strtol(result.substring(3,5).c_str(), NULL, 16), 4);
-    tankBit = bitRead(strtol(result.substring(5,7).c_str(), NULL, 16), 5);
+    trayBit = bitRead(strtol(result.substr(3,5).c_str(), NULL, 16), 4);
+    tankBit = bitRead(strtol(result.substr(5,7).c_str(), NULL, 16), 5);
     if (trayBit == 1) { tray_status = "Present"; } else { tray_status = "Missing"; }
     if (tankBit == 1) { tank_status = "Fill Tank"; } else { tank_status = "OK"; }
-
-    // For Testing
+   
     // read_bit0 = bitRead(hex_to_byte, 0);
     // read_bit1 = bitRead(hex_to_byte, 1);
     // read_bit2 = bitRead(hex_to_byte, 2);
@@ -116,8 +121,7 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
     // ESP_LOGD("main", "Raw IC result: %s", result.c_str());
     // ESP_LOGD("main", "Substringed: %s", hexString.c_str());
     // ESP_LOGD("main", "Converted_To_Long: %li", hex_to_byte);
-    // ESP_LOGD("main", "As Bits: %d%d%d%d%d%d%d%d", read_bit7,read_bit6,read_bit5,read_bit4,read_bit3,read_bit2,read_bit1,read_bit0);
-
+    // ESP_LOGD("main", "As Bits: %d%d%d%d%d%d%d%d", read_bit7,read_bit6,read_bit5,read_bit4,read_bit3,read_bit2,read_b$
     if (xsensor1 != nullptr)   xsensor1->publish_state(num_single_espresso);
     if (xsensor2 != nullptr)   xsensor2->publish_state(num_double_espresso);
     if (xsensor3 != nullptr)   xsensor3->publish_state(num_coffee);
