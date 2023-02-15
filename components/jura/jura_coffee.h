@@ -16,7 +16,7 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
  TextSensor *xsensor7 {nullptr};
 
  public:
-  JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sensor3, Sensor *sensor4, Sensor *sensor5$
+JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sensor3, Sensor *sensor4, Sensor *sensor5, TextSensor *sensor6, TextSensor *sensor7) : UARTDevice(parent) , xsensor1(sensor1) , xsensor2(sensor2) , xsensor3(sensor3) , xsensor4(sensor4) , xsensor5(sensor5) , xsensor6(sensor6) , xsensor7(sensor7) {}
   long num_single_espresso, num_double_espresso, num_coffee, num_double_coffee, num_clean;
   std::string tray_status, tank_status;
 
@@ -104,6 +104,7 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
     // Tray & water tank status
     // Much gratitude to https://www.instructables.com/id/IoT-Enabled-Coffee-Machine/ for figuring out how these bits a$    result = cmd2jura("IC:");
     hexString = result.substr(3,5);
+    result = cmd2jura("IC:");
     hex_to_byte = strtol(hexString.c_str(),NULL,16);
     trayBit = bitRead(strtol(result.substr(3,5).c_str(), NULL, 16), 4);
     tankBit = bitRead(strtol(result.substr(5,7).c_str(), NULL, 16), 5);
