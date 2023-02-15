@@ -21,6 +21,7 @@ JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sens
   std::string tray_status, tank_status;
 
   // Jura communication function taken in entirety from cmd2jura.ino, found at https://github.com/hn/jura-coffee-machine  std::string cmd2jura(std::string outbytes) {
+  std::string cmd2jura(std::string outbytes) {
     std::string inbytes;
     int w = 0;
 
