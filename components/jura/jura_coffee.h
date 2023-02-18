@@ -33,8 +33,8 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
     for (int i = 0; i < outbytes.length(); i++) {
       for (int s = 0; s < 8; s += 2) {
         uint8_t rawbyte = 255;
-        bitWrite(rawbyte, 2, bitRead(outbytes.charAt(i), s + 0));
-        bitWrite(rawbyte, 5, bitRead(outbytes.charAt(i), s + 1));
+        bitWrite(rawbyte, 2, bitRead(outbytes.at(i), s + 0));
+        bitWrite(rawbyte, 5, bitRead(outbytes.at(i), s + 1));
         write(rawbyte);
       }
       delay(8);
