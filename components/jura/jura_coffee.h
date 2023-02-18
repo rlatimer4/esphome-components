@@ -42,7 +42,7 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
 
     int s = 0;
     uint8_t inbyte = 0;
-    while (!inbytes.compare(inbytes.length()-5,4,"\r\n")) {
+    while (0 != inbytes.compare(inbytes.length()-4,4,"\r\n")) {
       if (available()) {
         uint8_t rawbyte = read();
         bitWrite(inbyte, s + 0, bitRead(rawbyte, 2));
