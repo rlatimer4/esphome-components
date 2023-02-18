@@ -1,5 +1,4 @@
 #include "esphome.h"
-#include "strings.h"
 
 #define bitRead(value, bit) (((value) >> (bit)) & 0x01)
 #define bitSet(value, bit) ((value) |= (1UL << (bit)))
@@ -16,11 +15,12 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
  TextSensor *xsensor7 {nullptr};
 
  public:
-JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sensor3, Sensor *sensor4, Sensor *sensor5, TextSensor *sensor6, TextSensor *sensor7) : UARTDevice(parent) , xsensor1(sensor1) , xsensor2(sensor2) , xsensor3(sensor3) , xsensor4(sensor4) , xsensor5(sensor5) , xsensor6(sensor6) , xsensor7(sensor7) {}
+  JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sensor3, Sensor *sensor4, Sensor *sensor5, TextSensor *sensor6, TextSensor *sensor7) : UARTDevice(parent) , xsensor1(sensor1) , xsensor2(sensor2) , xsensor3(sensor3) , xsensor4(sensor4) , xsensor5(sensor5) , xsensor6(sensor6) , xsensor7(sensor7) {}
+
   long num_single_espresso, num_double_espresso, num_coffee, num_double_coffee, num_clean;
   std::string tray_status, tank_status;
 
-  // Jura communication function taken in entirety from cmd2jura.ino, found at https://github.com/hn/jura-coffee-machine  std::string cmd2jura(std::string outbytes) {
+  // Jura communication function taken in entirety from cmd2jura.ino, found at https://github.com/hn/jura-coffee-machine
   std::string cmd2jura(std::string outbytes) {
     std::string inbytes;
     int w = 0;
@@ -32,9 +32,9 @@ JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sens
     outbytes += "\r\n";
     for (int i = 0; i < outbytes.length(); i++) {
       for (int s = 0; s < 8; s += 2) {
-        char rawbyte = 255;
-        bitWrite(rawbyte, 2, bitRead(outbytes.at(i), s + 0));
-        bitWrite(rawbyte, 5, bitRead(outbytes.at(i), s + 1));
+        uint8_t rawbyte = 255;
+        bitWrite(rawbyte, 2, bitRead(outbytes.charAt(i), s + 0));
+        bitWrite(rawbyte, 5, bitRead(outbytes.charAt(i), s + 1));
         write(rawbyte);
       }
       delay(8);
@@ -42,9 +42,9 @@ JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sens
 
     int s = 0;
     uint8_t inbyte = 0;
-    while (!inbytes.compare(inbytes.length()-1, 1, "\r\n")) {
+    while (!inbytes.compare(inbytes.length()-5,4,"\r\n")) {
       if (available()) {
-        char rawbyte = read();
+        uint8_t rawbyte = read();
         bitWrite(inbyte, s + 0, bitRead(rawbyte, 2));
         bitWrite(inbyte, s + 1, bitRead(rawbyte, 5));
         if ((s += 2) >= 8) {
@@ -86,9 +86,6 @@ JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sens
     // Double Espressos made
     substring = result.substr(7,11);
     num_double_espresso = strtol(substring.c_str(),NULL,16);
-       // Double Espressos made
-    substring = result.substr(7,11);
-    num_double_espresso = strtol(substring.c_str(),NULL,16);
 
     // Coffees made
     substring = result.substr(11,15);
@@ -103,15 +100,16 @@ JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sens
     num_clean = strtol(substring.c_str(),NULL,16);
 
     // Tray & water tank status
-    // Much gratitude to https://www.instructables.com/id/IoT-Enabled-Coffee-Machine/ for figuring out how these bits a$    result = cmd2jura("IC:");
-    hexString = result.substr(3,5);
+    // Much gratitude to https://www.instructables.com/id/IoT-Enabled-Coffee-Machine/ for figuring out how these bits are stored
     result = cmd2jura("IC:");
+    hexString = result.substr(3,5);
     hex_to_byte = strtol(hexString.c_str(),NULL,16);
     trayBit = bitRead(strtol(result.substr(3,5).c_str(), NULL, 16), 4);
     tankBit = bitRead(strtol(result.substr(5,7).c_str(), NULL, 16), 5);
-    if (trayBit == 1) { tray_status = "Present"; } else { tray_status = "Missing"; }
+    if (trayBit == 1) { tray_status = "Missing"; } else { tray_status = "Present"; }
     if (tankBit == 1) { tank_status = "Fill Tank"; } else { tank_status = "OK"; }
-   
+
+    // For Testing
     // read_bit0 = bitRead(hex_to_byte, 0);
     // read_bit1 = bitRead(hex_to_byte, 1);
     // read_bit2 = bitRead(hex_to_byte, 2);
@@ -123,7 +121,8 @@ JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sens
     // ESP_LOGD("main", "Raw IC result: %s", result.c_str());
     // ESP_LOGD("main", "Substringed: %s", hexString.c_str());
     // ESP_LOGD("main", "Converted_To_Long: %li", hex_to_byte);
-    // ESP_LOGD("main", "As Bits: %d%d%d%d%d%d%d%d", read_bit7,read_bit6,read_bit5,read_bit4,read_bit3,read_bit2,read_b$
+    // ESP_LOGD("main", "As Bits: %d%d%d%d%d%d%d%d", read_bit7,read_bit6,read_bit5,read_bit4,read_bit3,read_bit2,read_bit1,read_bit0);
+
     if (xsensor1 != nullptr)   xsensor1->publish_state(num_single_espresso);
     if (xsensor2 != nullptr)   xsensor2->publish_state(num_double_espresso);
     if (xsensor3 != nullptr)   xsensor3->publish_state(num_coffee);
