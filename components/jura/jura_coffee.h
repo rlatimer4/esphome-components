@@ -1,4 +1,10 @@
 #include "esphome.h"
+#include <string>
+
+static bool endsWith(const std::string& str, const std::string& suffix)
+{
+    return str.size() >= suffix.size() && 0 == str.compare(str.size()-suffix.size(), suffix.size(), suffix);
+}
 
 #define bitRead(value, bit) (((value) >> (bit)) & 0x01)
 #define bitSet(value, bit) ((value) |= (1UL << (bit)))
@@ -42,7 +48,7 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
 
     int s = 0;
     uint8_t inbyte = 0;
-    while (0 != inbytes.compare(inbytes.length()-4,4,"\r\n")) {
+    while (!endsWith(inbytes, "\r\n")) {
       if (available()) {
         uint8_t rawbyte = read();
         bitWrite(inbyte, s + 0, bitRead(rawbyte, 2));
