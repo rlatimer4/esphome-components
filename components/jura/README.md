@@ -50,7 +50,6 @@ Particular commands seem to vary by model.\
 These work on the Impressa J6, software `TY: PIM V01.01`, `TL: LOADER V3.0`.
 Command | Action
 --- | ---
-
 AN:02 | Switch Off
 FA:01 | Switch off, including rinse
 AN:0D | Tray Test? Or date related?
