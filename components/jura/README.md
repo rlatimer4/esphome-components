@@ -47,7 +47,7 @@ Commands for your machine can be generated using the provided script, `generate_
             - uart.write: [0xFB, 0xFB, 0xDB, 0xDB]  ## '\n'
 
 Particular commands seem to vary by model.\
-These work on the Impressa J6, software `TY: PIM V01.01`, `TL: LOADER V3.0`.
+These work on the Jura E8 - the version with bluetooth smartconnect.
 Command | Action
 --- | ---
 AN:02 | Switch Off
