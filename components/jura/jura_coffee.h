@@ -86,32 +86,32 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
     result = cmd2jura("RT:0000");
 
     // Get Single Espressos made
-    substring = result.substr(3,7);
+    substring = result.substr(3,4);
     num_single_espresso = strtol(substring.c_str(),NULL,16);
 
     // Double Espressos made
-    substring = result.substr(7,11);
+    substring = result.substr(7,4);
     num_double_espresso = strtol(substring.c_str(),NULL,16);
 
     // Coffees made
-    substring = result.substr(11,15);
+    substring = result.substr(11,4);
     num_coffee = strtol(substring.c_str(),NULL,16);
 
     // Double Coffees made
-    substring = result.substr(15,19);
+    substring = result.substr(15,4);
     num_double_coffee = strtol(substring.c_str(),NULL,16);
 
     // Cleanings done
-    substring = result.substr(35,39);
+    substring = result.substr(35,4);
     num_clean = strtol(substring.c_str(),NULL,16);
 
     // Tray & water tank status
     // Much gratitude to https://www.instructables.com/id/IoT-Enabled-Coffee-Machine/ for figuring out how these bits are stored
     result = cmd2jura("IC:");
-    hexString = result.substr(3,5);
+    hexString = result.substr(3,2);
     hex_to_byte = strtol(hexString.c_str(),NULL,16);
-    trayBit = bitRead(strtol(result.substr(3,5).c_str(), NULL, 16), 4);
-    tankBit = bitRead(strtol(result.substr(5,7).c_str(), NULL, 16), 5);
+    trayBit = bitRead(strtol(result.substr(3,2).c_str(), NULL, 16), 4);
+    tankBit = bitRead(strtol(result.substr(5,2).c_str(), NULL, 16), 5);
     if (trayBit == 1) { tray_status = "Missing"; } else { tray_status = "Present"; }
     if (tankBit == 1) { tank_status = "Fill Tank"; } else { tank_status = "OK"; }
 
