@@ -1,3 +1,19 @@
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Enable fallback hotspot in case of WiFi issues
+  ap:
+    ssid: "${friendly_name} Fallback Hotspot"
+    password: !secret fallback_password
+
 substitutions:
   devicename: jura_coffee
   friendly_name: Coffee Machine
@@ -44,23 +60,6 @@ logger:
   logs:
     # Uncomment the line below for detailed component debugging
     # jura: VERBOSE
-
-api:
-  encryption:
-    key: !secret api_key
-
-ota:
-  - platform: esphome
-    password: !secret ota_password
-
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  # Enable fallback hotspot in case of WiFi issues
-  ap:
-    ssid: "${friendly_name} Fallback Hotspot"
-    password: !secret fallback_password
-
 captive_portal:
 
 # Optional BLE tracker and Bluetooth proxy
