@@ -6,7 +6,9 @@ from . import thermal_printer_ns, ThermalPrinterComponent, CONF_THERMAL_PRINTER_
 
 DEPENDENCIES = ["thermal_printer"]
 
-ThermalPrinterBinarySensor = thermal_printer_ns.class_("ThermalPrinterBinarySensor", binary_sensor.BinarySensor, cg.Component)
+ThermalPrinterBinarySensor = thermal_printer_ns.class_(
+    "ThermalPrinterBinarySensor", binary_sensor.BinarySensor, cg.Component
+)
 
 CONFIG_SCHEMA = binary_sensor.BINARY_SENSOR_SCHEMA.extend(
     {
