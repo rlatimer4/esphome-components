@@ -10,12 +10,11 @@ ThermalPrinterTextSensor = thermal_printer_ns.class_(
     "ThermalPrinterTextSensor", text_sensor.TextSensor, cg.Component
 )
 
-CONFIG_SCHEMA = text_sensor.TEXT_SENSOR_SCHEMA.extend(
-    {
-        cv.GenerateID(): cv.declare_id(ThermalPrinterTextSensor),
-        cv.GenerateID(CONF_THERMAL_PRINTER_ID): cv.use_id(ThermalPrinterComponent),
-    }
-).extend(cv.COMPONENT_SCHEMA)
+CONFIG_SCHEMA = text_sensor.text_sensor_schema(
+    ThermalPrinterTextSensor
+).extend({
+    cv.GenerateID(CONF_THERMAL_PRINTER_ID): cv.use_id(ThermalPrinterComponent),
+}).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
