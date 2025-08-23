@@ -1,8 +1,20 @@
-#include "esphome.h"
+#pragma once
+
+#include "esphome/core/component.h"
+#include "esphome/core/log.h" // Required for logging
+#include "esphome/components/sensor/sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
+#include "esphome/components/uart/uart.h"
 #include <string>
 
-static bool endsWith(const std::string& str, const std::string& suffix)
-{
+namespace esphome {
+namespace jura {
+
+// A tag for our log messages, so they are easy to identify.
+static const char *const TAG = "jura";
+
+// Helper functions from your original code
+static bool endsWith(const std::string& str, const std::string& suffix) {
     return str.size() >= suffix.size() && 0 == str.compare(str.size()-suffix.size(), suffix.size(), suffix);
 }
 
@@ -11,31 +23,141 @@ static bool endsWith(const std::string& str, const std::string& suffix)
 #define bitClear(value, bit) ((value) &= ~(1UL << (bit)))
 #define bitWrite(value, bit, bitvalue) ((bitvalue) ? bitSet(value, bit) : bitClear(value, bit))
 
-class JuraCoffee : public PollingComponent, public UARTDevice {
- Sensor *xsensor1 {nullptr};
- Sensor *xsensor2 {nullptr};
- Sensor *xsensor3 {nullptr};
- Sensor *xsensor4 {nullptr};
- Sensor *xsensor5 {nullptr};
- TextSensor *xsensor6 {nullptr};
- TextSensor *xsensor7 {nullptr};
-
+class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
  public:
-  JuraCoffee(UARTComponent *parent, Sensor *sensor1, Sensor *sensor2, Sensor *sensor3, Sensor *sensor4, Sensor *sensor5, TextSensor *sensor6, TextSensor *sensor7) : UARTDevice(parent) , xsensor1(sensor1) , xsensor2(sensor2) , xsensor3(sensor3) , xsensor4(sensor4) , xsensor5(sensor5) , xsensor6(sensor6) , xsensor7(sensor7) {}
+  // Setters for each sensor that can be configured in YAML
+  void set_single_espresso_sensor(sensor::Sensor *s) { this->single_espresso_sensor_ = s; }
+  void set_double_espresso_sensor(sensor::Sensor *s) { this->double_espresso_sensor_ = s; }
+  void set_coffee_sensor(sensor::Sensor *s) { this->coffee_sensor_ = s; }
+  void set_double_coffee_sensor(sensor::Sensor *s) { this->double_coffee_sensor_ = s; }
+  void set_cleanings_sensor(sensor::Sensor *s) { this->cleanings_sensor_ = s; }
+  void set_tray_status_sensor(text_sensor::TextSensor *s) { this->tray_status_sensor_ = s; }
+  void set_tank_status_sensor(text_sensor::TextSensor *s) { this->tank_status_sensor_ = s; }
+  void set_timeout_ms(uint32_t timeout_ms) { this->timeout_ms_ = timeout_ms; }
 
-  long num_single_espresso, num_double_espresso, num_coffee, num_double_coffee, num_clean;
-  std::string tray_status, tank_status;
+  void setup() override {
+    ESP_LOGCONFIG(TAG, "Setting up Jura Coffee Machine component...");
+    ESP_LOGCONFIG(TAG, "  Timeout: %d ms", this->timeout_ms_);
+    ESP_LOGCONFIG(TAG, "  Update interval: %d ms", this->get_update_interval());
+    
+    // Log which sensors are configured
+    if (this->single_espresso_sensor_ != nullptr) ESP_LOGCONFIG(TAG, "  Single Espresso sensor configured");
+    if (this->double_espresso_sensor_ != nullptr) ESP_LOGCONFIG(TAG, "  Double Espresso sensor configured");
+    if (this->coffee_sensor_ != nullptr) ESP_LOGCONFIG(TAG, "  Coffee sensor configured");
+    if (this->double_coffee_sensor_ != nullptr) ESP_LOGCONFIG(TAG, "  Double Coffee sensor configured");
+    if (this->cleanings_sensor_ != nullptr) ESP_LOGCONFIG(TAG, "  Cleanings sensor configured");
+    if (this->tray_status_sensor_ != nullptr) ESP_LOGCONFIG(TAG, "  Tray Status sensor configured");
+    if (this->tank_status_sensor_ != nullptr) ESP_LOGCONFIG(TAG, "  Tank Status sensor configured");
+  }
 
-  // Jura communication function taken in entirety from cmd2jura.ino, found at https://github.com/hn/jura-coffee-machine
+  void update() override {
+    ESP_LOGD(TAG, "Polling Jura Coffee Machine for data...");
+    std::string result;
+
+    // --- Fetch and parse counter data ---
+    ESP_LOGV(TAG, "Requesting counter data...");
+    result = cmd2jura("RT:0000");
+    
+    // ROBUSTNESS: Check if the response is valid before trying to parse it.
+    if (result.length() < 39) { // 35 characters for cleanings + 4 for the value
+        ESP_LOGW(TAG, "Failed to get counter data or response was too short. Expected >=39 chars, got %d. Received: '%s'", result.length(), result.c_str());
+    } else {
+        ESP_LOGD(TAG, "Received counter data (%d chars): %s", result.length(), result.c_str());
+        
+        // Parse the data with bounds checking
+        try {
+            long num_single_espresso = strtol(result.substr(3,4).c_str(), nullptr, 16);
+            long num_double_espresso = strtol(result.substr(7,4).c_str(), nullptr, 16);
+            long num_coffee = strtol(result.substr(11,4).c_str(), nullptr, 16);
+            long num_double_coffee = strtol(result.substr(15,4).c_str(), nullptr, 16);
+            long num_clean = strtol(result.substr(35,4).c_str(), nullptr, 16);
+
+            ESP_LOGV(TAG, "Parsed counters - Single: %ld, Double: %ld, Coffee: %ld, Double Coffee: %ld, Cleanings: %ld", 
+                     num_single_espresso, num_double_espresso, num_coffee, num_double_coffee, num_clean);
+
+            if (this->single_espresso_sensor_ != nullptr) {
+                this->single_espresso_sensor_->publish_state(num_single_espresso);
+                ESP_LOGV(TAG, "Published single espresso: %ld", num_single_espresso);
+            }
+            if (this->double_espresso_sensor_ != nullptr) {
+                this->double_espresso_sensor_->publish_state(num_double_espresso);
+                ESP_LOGV(TAG, "Published double espresso: %ld", num_double_espresso);
+            }
+            if (this->coffee_sensor_ != nullptr) {
+                this->coffee_sensor_->publish_state(num_coffee);
+                ESP_LOGV(TAG, "Published coffee: %ld", num_coffee);
+            }
+            if (this->double_coffee_sensor_ != nullptr) {
+                this->double_coffee_sensor_->publish_state(num_double_coffee);
+                ESP_LOGV(TAG, "Published double coffee: %ld", num_double_coffee);
+            }
+            if (this->cleanings_sensor_ != nullptr) {
+                this->cleanings_sensor_->publish_state(num_clean);
+                ESP_LOGV(TAG, "Published cleanings: %ld", num_clean);
+            }
+        } catch (const std::exception& e) {
+            ESP_LOGE(TAG, "Error parsing counter data: %s", e.what());
+        }
+    }
+
+    // --- Fetch and parse status data ---
+    ESP_LOGV(TAG, "Requesting status data...");
+    result = cmd2jura("IC:");
+    
+    // ROBUSTNESS: Check if the response is valid before trying to parse it.
+    if (result.length() < 5) { // 3 characters for "IC:" + 2 for the value
+        ESP_LOGW(TAG, "Failed to get status data or response was too short. Expected >=5 chars, got %d. Received: '%s'", result.length(), result.c_str());
+    } else {
+        ESP_LOGD(TAG, "Received status data (%d chars): %s", result.length(), result.c_str());
+        
+        try {
+            // Parse the data with bounds checking
+            uint8_t hex_to_byte = strtol(result.substr(3,2).c_str(), nullptr, 16);
+            int trayBit = bitRead(hex_to_byte, 4);
+            int tankBit = bitRead(hex_to_byte, 5);
+            
+            ESP_LOGV(TAG, "Status byte: 0x%02X, tray bit: %d, tank bit: %d", hex_to_byte, trayBit, tankBit);
+            
+            std::string tray_status = (trayBit == 1) ? "Not Fitted" : "OK";
+            std::string tank_status = (tankBit == 1) ? "Fill Tank" : "OK";
+
+            if (this->tray_status_sensor_ != nullptr) {
+                this->tray_status_sensor_->publish_state(tray_status);
+                ESP_LOGV(TAG, "Published tray status: %s", tray_status.c_str());
+            }
+            if (this->tank_status_sensor_ != nullptr) {
+                this->tank_status_sensor_->publish_state(tank_status);
+                ESP_LOGV(TAG, "Published tank status: %s", tank_status.c_str());
+            }
+        } catch (const std::exception& e) {
+            ESP_LOGE(TAG, "Error parsing status data: %s", e.what());
+        }
+    }
+  }
+
+  void dump_config() override {
+    ESP_LOGCONFIG(TAG, "Jura Coffee Machine:");
+    ESP_LOGCONFIG(TAG, "  Timeout: %d ms", this->timeout_ms_);
+    ESP_LOGCONFIG(TAG, "  Update Interval: %d ms", this->get_update_interval());
+  }
+
+ protected:
+  // Jura communication function with configurable timeout and enhanced logging
   std::string cmd2jura(std::string outbytes) {
     std::string inbytes;
-    int w = 0;
+    uint32_t timeout_loops = this->timeout_ms_ / 10; // 10ms per loop iteration
+    uint32_t w = 0;
 
+    ESP_LOGV(TAG, "Sending command: %s", outbytes.c_str());
+
+    // Clear any pending data in the receive buffer
     while (available()) {
       read();
     }
 
     outbytes += "\r\n";
+    
+    // Send command byte by byte with Jura encoding
     for (int i = 0; i < outbytes.length(); i++) {
       for (int s = 0; s < 8; s += 2) {
         uint8_t rawbyte = 255;
@@ -46,6 +168,7 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
       delay(8);
     }
 
+    // Read response with Jura decoding
     int s = 0;
     uint8_t inbyte = 0;
     while (!endsWith(inbytes, "\r\n")) {
@@ -60,82 +183,29 @@ class JuraCoffee : public PollingComponent, public UARTDevice {
       } else {
         delay(10);
       }
-      if (w++ > 500) {
+      if (w++ > timeout_loops) {
+        ESP_LOGW(TAG, "Timeout waiting for response after %d ms. Partial response: '%s'", this->timeout_ms_, inbytes.c_str());
         return "";
       }
     }
-
-    return inbytes.substr(0, inbytes.length() - 2);
+    
+    std::string response = inbytes.substr(0, inbytes.length() - 2);
+    ESP_LOGV(TAG, "Received response: %s", response.c_str());
+    return response;
   }
 
-  void setup() override {
-    this->set_update_interval(60000); // 600000 = 10 minutes // Now 60 seconds
-  }
+  // Configuration
+  uint32_t timeout_ms_ = 5000; // Default 5 second timeout
 
-  void loop() override {
-  }
-
-  void update() override {
-    std::string result, hexString, substring;
-    uint8_t hex_to_byte;
-    int trayBit, tankBit;
-    // For Testing
-    // int read_bit0,read_bit1,read_bit2,read_bit3,read_bit4,read_bit5,read_bit6,read_bit7;
-
-    // Fetch our line of EEPROM
-    result = cmd2jura("RT:0000");
-
-    // Get Single Espressos made
-    substring = result.substr(3,4);
-    num_single_espresso = strtol(substring.c_str(),NULL,16);
-
-    // Double Espressos made
-    substring = result.substr(7,4);
-    num_double_espresso = strtol(substring.c_str(),NULL,16);
-
-    // Coffees made
-    substring = result.substr(11,4);
-    num_coffee = strtol(substring.c_str(),NULL,16);
-
-    // Double Coffees made
-    substring = result.substr(15,4);
-    num_double_coffee = strtol(substring.c_str(),NULL,16);
-
-    // Cleanings done
-    substring = result.substr(35,4);
-    num_clean = strtol(substring.c_str(),NULL,16);
-
-    // Tray & water tank status
-    // Much gratitude to https://www.instructables.com/id/IoT-Enabled-Coffee-Machine/ for figuring out how these bits are stored
-    result = cmd2jura("IC:");
-    hexString = result.substr(3,2);
-    hex_to_byte = strtol(hexString.c_str(),NULL,16);
-    trayBit = bitRead(strtol(result.substr(3,2).c_str(), NULL, 16), 4);
-    tankBit = bitRead(strtol(result.substr(5,2).c_str(), NULL, 16), 5);
-    if (trayBit == 1) { tray_status = "Missing"; } else { tray_status = "Present"; }
-    if (tankBit == 1) { tank_status = "Fill Tank"; } else { tank_status = "OK"; }
-
-    // For Testing
-    // read_bit0 = bitRead(hex_to_byte, 0);
-    // read_bit1 = bitRead(hex_to_byte, 1);
-    // read_bit2 = bitRead(hex_to_byte, 2);
-    // read_bit3 = bitRead(hex_to_byte, 3);
-    // read_bit4 = bitRead(hex_to_byte, 4);
-    // read_bit5 = bitRead(hex_to_byte, 5);
-    // read_bit6 = bitRead(hex_to_byte, 6);
-    // read_bit7 = bitRead(hex_to_byte, 7);
-    // ESP_LOGD("main", "Raw IC result: %s", result.c_str());
-    // ESP_LOGD("main", "Substringed: %s", hexString.c_str());
-    // ESP_LOGD("main", "Converted_To_Long: %li", hex_to_byte);
-    // ESP_LOGD("main", "As Bits: %d%d%d%d%d%d%d%d", read_bit7,read_bit6,read_bit5,read_bit4,read_bit3,read_bit2,read_bit1,read_bit0);
-
-    if (xsensor1 != nullptr)   xsensor1->publish_state(num_single_espresso);
-    if (xsensor2 != nullptr)   xsensor2->publish_state(num_double_espresso);
-    if (xsensor3 != nullptr)   xsensor3->publish_state(num_coffee);
-    if (xsensor4 != nullptr)   xsensor4->publish_state(num_double_coffee);
-    if (xsensor5 != nullptr)   xsensor5->publish_state(num_clean);
-    if (xsensor6 != nullptr)   xsensor6->publish_state(tray_status);
-    if (xsensor7 != nullptr)   xsensor7->publish_state(tank_status);
-
-  }
+  // Pointers for the sensors
+  sensor::Sensor *single_espresso_sensor_{nullptr};
+  sensor::Sensor *double_espresso_sensor_{nullptr};
+  sensor::Sensor *coffee_sensor_{nullptr};
+  sensor::Sensor *double_coffee_sensor_{nullptr};
+  sensor::Sensor *cleanings_sensor_{nullptr};
+  text_sensor::TextSensor *tray_status_sensor_{nullptr};
+  text_sensor::TextSensor *tank_status_sensor_{nullptr};
 };
+
+}  // namespace jura
+}  // namespace esphome
