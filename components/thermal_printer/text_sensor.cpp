@@ -4,7 +4,7 @@
 namespace esphome {
 namespace thermal_printer {
 
-static const char *const TAG = "thermal_printer.text_sensor";
+static const char *const TEXT_SENSOR_TAG = "thermal_printer.text_sensor";
 
 void ThermalPrinterTextSensor::setup() {
   // Set up callback for paper status changes
@@ -13,7 +13,7 @@ void ThermalPrinterTextSensor::setup() {
       std::string status = has_paper ? "Present" : "Out";
       if (this->state != status) {
         this->publish_state(status);
-        ESP_LOGD(TAG, "Paper status: %s", status.c_str());
+        ESP_LOGD(TEXT_SENSOR_TAG, "Paper status: %s", status.c_str());
       }
     });
   }
@@ -37,7 +37,7 @@ void ThermalPrinterTextSensor::loop() {
         this->last_paper_status_ = current_status;
         std::string status = current_status ? "Present" : "Out";
         this->publish_state(status);
-        ESP_LOGD(TAG, "Paper status changed: %s", status.c_str());
+        ESP_LOGD(TEXT_SENSOR_TAG, "Paper status changed: %s", status.c_str());
       }
     }
   }
