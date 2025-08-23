@@ -1,6 +1,15 @@
 # ESPHome Thermal Printer Integration
 
-A modern ESPHome integration for thermal printers using the Adafruit Thermal Printer Library, specifically designed for ESP8266 D1 Mini boards with 58mm thermal printers.
+A **pure custom ESPHome implementation** for thermal printers, specifically designed for ESP8266 D1 Mini boards with 58mm thermal printers. This integration provides direct ESC/POS command control without external library dependencies.
+
+## Key Features
+
+✅ **No External Dependencies** - Pure ESPHome implementation  
+✅ **Paper Usage Tracking** - Persistent counters with flash storage  
+✅ **Enhanced Formatting** - Two-column text, table printing, dot leaders  
+✅ **Home Assistant Integration** - Full service and sensor support  
+✅ **Memory Efficient** - Optimized for ESP8266 constraints  
+✅ **Reliable Communication** - Direct UART control with proper error handling
 
 ## Hardware Requirements
 
@@ -73,19 +82,30 @@ esphome run thermal_printer.yaml
 - **Text printing** with multiple sizes (Small, Medium, Large)
 - **Text formatting**: Bold, Underline, Inverse
 - **Text alignment**: Left, Center, Right
+- **Two-column printing** with customizable dot leaders
+- **Table printing** (2 or 3 columns with auto-alignment)
 - **Barcode printing** (UPC-A, UPC-E, EAN13, EAN8, CODE39, ITF, CODABAR, CODE93, CODE128)
-- **Paper status detection**
+- **Paper status detection** with real-time monitoring
 - **Power management** (Sleep/Wake)
 - **Line spacing control**
 - **Feed paper control**
 
+### Paper Usage Tracking
+- **Real-time tracking** of lines printed, characters printed, paper feeds
+- **Usage estimation** in millimeters and percentage of roll
+- **Persistent storage** in ESP flash memory (survives reboots)
+- **Configurable roll length** (default 30m)
+- **Usage reset functionality**
+- **Historical counters** for maintenance planning
+
 ### ESPHome Integration
 - **Home Assistant API** integration
-- **Services** for all printer functions
-- **Sensors** for paper status monitoring
+- **Services** for all printer functions including new formatting features
+- **Sensors** for paper status and usage monitoring
 - **Switches** for power management
 - **Automatic startup** message
 - **Status monitoring**
+- **Template sensors** for usage analytics
 
 ## Usage Examples
 
@@ -112,27 +132,53 @@ esphome run thermal_printer.yaml
     barcode_data: "123456789012"
 ```
 
-### Advanced Formatting
+### Two-Column Printing
 
 ```yaml
-# Print a receipt-style document
-- service: esphome.thermal_printer_print_text
+# Print receipt-style layouts
+- service: esphome.thermal_printer_print_two_column
   data:
-    text: "=== RECEIPT ==="
-    size: "L"
-    justify: "C"
-    bold: true
+    left_text: "Coffee"
+    right_text: "$3.50"
+    fill_dots: true    # Creates: Coffee...........$3.50
 
-- service: esphome.thermal_printer_print_text
+- service: esphome.thermal_printer_print_two_column
   data:
-    text: |
-      Item 1..................$5.99
-      Item 2..................$3.50
-      Item 3..................$12.25
-      -------------------------
-      Total...................$21.74
-    size: "S"
-    justify: "L"
+    left_text: "Tax"
+    right_text: "$0.25"
+    fill_dots: true    # Creates: Tax................$0.25
+```
+
+### Table Printing
+
+```yaml
+# Three-column table
+- service: esphome.thermal_printer_print_table_row
+  data:
+    col1: "Item"
+    col2: "Qty"
+    col3: "Price"
+
+- service: esphome.thermal_printer_print_table_row
+  data:
+    col1: "Coffee"
+    col2: "2"
+    col3: "$7.00"
+```
+
+### Paper Usage Management
+
+```yaml
+# Check paper usage
+sensor_value: "{{ states('sensor.thermal_printer_paper_usage_percent') }}%"
+
+# Reset paper usage counters
+- service: esphome.thermal_printer_reset_paper_usage
+
+# Set custom roll length (in mm)
+- service: esphome.thermal_printer_set_paper_roll_length
+  data:
+    length_mm: 50000  # 50 meter roll
 ```
 
 ## Available Services
@@ -140,11 +186,15 @@ esphome run thermal_printer.yaml
 | Service | Parameters | Description |
 |---------|------------|-------------|
 | `print_text` | `text`, `size`, `justify`, `bold`, `underline`, `inverse` | Print formatted text |
+| `print_two_column` | `left_text`, `right_text`, `fill_dots` | Print two-column layout with optional dot leaders |
+| `print_table_row` | `col1`, `col2`, `col3` | Print table row (2 or 3 columns) |
 | `print_barcode` | `barcode_type`, `barcode_data` | Print barcode |
 | `feed_paper` | `lines` | Feed paper by specified lines |
 | `wake_printer` | - | Wake printer from sleep |
 | `sleep_printer` | - | Put printer to sleep |
 | `test_print` | - | Print test page |
+| `reset_paper_usage` | - | Reset paper usage counters |
+| `set_paper_roll_length` | `length_mm` | Set paper roll length for usage calculation |
 
 ## Barcode Types
 
@@ -165,6 +215,10 @@ esphome run thermal_printer.yaml
 ### Sensors Available
 - **Paper Status** (Text): "Present" or "Out"
 - **Paper Loaded** (Binary): True/False
+- **Paper Usage (mm)** (Sensor): Millimeters of paper used
+- **Paper Usage (%)** (Sensor): Percentage of roll used (based on 30m default)
+- **Lines Printed** (Sensor): Total lines printed since last reset
+- **Characters Printed** (Sensor): Total characters printed since last reset
 - **WiFi Signal**: Signal strength
 - **Uptime**: Device uptime
 
