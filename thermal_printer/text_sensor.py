@@ -6,7 +6,9 @@ from . import thermal_printer_ns, ThermalPrinterComponent, CONF_THERMAL_PRINTER_
 
 DEPENDENCIES = ["thermal_printer"]
 
-ThermalPrinterTextSensor = thermal_printer_ns.class_("ThermalPrinterTextSensor", text_sensor.TextSensor, cg.Component)
+ThermalPrinterTextSensor = thermal_printer_ns.class_(
+    "ThermalPrinterTextSensor", text_sensor.TextSensor, cg.Component
+)
 
 CONFIG_SCHEMA = text_sensor.TEXT_SENSOR_SCHEMA.extend(
     {
