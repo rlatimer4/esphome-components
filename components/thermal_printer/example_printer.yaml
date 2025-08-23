@@ -1,3 +1,30 @@
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# External Components
+external_components:
+  - source:
+      type: local
+      path: my_components
+      
+# WiFi Configuration
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Thermal-Printer Fallback Hotspot"
+    password: "thermalprint123"
+
+captive_portal:
+
 # Text Sensors for status
 text_sensor:
   - platform: thermal_printer
@@ -56,36 +83,10 @@ sensor:
   platform: ESP8266
   board: d1_mini
 
-# WiFi Configuration
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
-  ap:
-    ssid: "Thermal-Printer Fallback Hotspot"
-    password: "thermalprint123"
-
-captive_portal:
 
 # Enable logging
 logger:
   level: INFO
-
-# Enable Home Assistant API
-api:
-  encryption:
-    key: !secret api_encryption_key
-
-ota:
-  - platform: esphome
-    password: !secret ota_password
-
-# External Components
-external_components:
-  - source:
-      type: local
-      path: my_components
 
 # UART Configuration for thermal printer
 uart:
@@ -243,24 +244,81 @@ api:
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            printer->set_paper_roll_length(length_mm);
 
-# Automation examples
-automation:
-  - alias: "Print startup message"
-    trigger:
-      - platform: homeassistant
-        event: start
-    action:
-      - delay: 30s  # Wait for everything to initialize
-      - service: print_text
-        data:
-          text: "Thermal Printer Online"
-          size: "M"
-          justify: "C"
-          bold: true
-          underline: false
-          inverse: false
+# UART Configuration for thermal printer
+uart:
+  id: thermal_uart
+  tx_pin: GPIO4  # D2 on D1 Mini
+  rx_pin: GPIO0  # D3 on D1 Mini (not used for printing but defined for completeness)
+  baud_rate: 9600
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+
+# Thermal Printer Component
+thermal_printer:
+  id: my_thermal_printer
+  uart_id: thermal_uart
+
+# Text Sensors for status
+text_sensor:
+  - platform: thermal_printer
+    thermal_printer_id: my_thermal_printer
+    name: "Paper Status"
+    id: paper_status
+
+# Binary Sensors
+binary_sensor:
+  - platform: thermal_printer
+    thermal_printer_id: my_thermal_printer
+    name: "Paper Loaded"
+    id: paper_loaded
+
+# Template sensors for monitoring
+sensor:
+  - platform: uptime
+    name: "Uptime"
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+  - platform: template
+    name: "Paper Usage (mm)"
+    id: paper_usage_mm
+    icon: mdi:ruler
+    unit_of_measurement: "mm"
+    accuracy_decimals: 1
+    lambda: |-
+      return id(my_thermal_printer)->get_paper_usage_mm();
+    update_interval: 30s
+  - platform: template
+    name: "Paper Usage (%)"
+    id: paper_usage_percent
+    icon: mdi:percent
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    lambda: |-
+      return id(my_thermal_printer)->get_paper_usage_percent();
+    update_interval: 30s
+  - platform: template
+    name: "Lines Printed"
+    id: lines_printed
+    icon: mdi:format-line-spacing
+    lambda: |-
+      return id(my_thermal_printer)->get_lines_printed();
+    update_interval: 30s
+  - platform: template
+    name: "Characters Printed"
+    id: characters_printed
+    icon: mdi:alphabetical
+    lambda: |-
+      return id(my_thermal_printer)->get_characters_printed();
+    update_interval: 30s
+
+# Status LED
+status_led:
+  pin:
+    number: GPIO2  # Built-in LED on D1 Mini
+    inverted: true
 
 # Switch for printer power management
 switch:
