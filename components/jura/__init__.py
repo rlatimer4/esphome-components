@@ -6,6 +6,7 @@ from esphome.const import (
     CONF_NAME,
     ICON_COUNTER,
     UNIT_EMPTY,
+    CONF_TIMEOUT,
 )
 
 # Define the namespace for our C++ code
@@ -22,9 +23,18 @@ CONF_TRAY_STATUS = "tray_status"
 CONF_TANK_STATUS = "tank_status"
 CONF_TIMEOUT_MS = "timeout_ms"
 
+def validate_config(config):
+    """Ensure at least one sensor is configured"""
+    sensors = [CONF_SINGLE_ESPRESSO, CONF_DOUBLE_ESPRESSO, CONF_COFFEE, 
+               CONF_DOUBLE_COFFEE, CONF_CLEANINGS, CONF_TRAY_STATUS, CONF_TANK_STATUS]
+    
+    if not any(sensor in config for sensor in sensors):
+        raise cv.Invalid("At least one sensor must be configured")
+    return config
+
 # Define the configuration schema for the component.
 # This tells ESPHome what options are available in the YAML.
-CONFIG_SCHEMA = (
+CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(JuraCoffeeComponent),
@@ -63,7 +73,8 @@ CONFIG_SCHEMA = (
         }
     )
     .extend(cv.polling_component_schema("60s"))
-    .extend(uart.UART_DEVICE_SCHEMA)
+    .extend(uart.UART_DEVICE_SCHEMA),
+    validate_config
 )
 
 # This function generates the C++ code during compilation
@@ -94,4 +105,3 @@ async def to_code(config):
         if conf_key in config:
             sens = await new_sensor_func(config[conf_key])
             cg.add(getattr(var, setter_method)(sens))
-
