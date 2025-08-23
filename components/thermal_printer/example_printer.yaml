@@ -277,19 +277,3 @@ select:
             printer->set_text_size(3);
           }
 
-# Automation examples
-automation:
-  - alias: "Print startup message"
-    trigger:
-      - platform: homeassistant
-        event: start
-    action:
-      - delay: 30s  # Wait for everything to initialize
-      - service: esphome.thermal_printer_print_text
-        data:
-          text: "Thermal Printer Online"
-          size: "M"
-          justify: "C"
-          bold: true
-          underline: false
-          inverse: false
