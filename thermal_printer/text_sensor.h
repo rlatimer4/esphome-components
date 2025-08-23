@@ -15,8 +15,9 @@ class ThermalPrinterTextSensor : public text_sensor::TextSensor, public Componen
   float get_setup_priority() const override { return setup_priority::DATA; }
 
  protected:
-  ThermalPrinterComponent *parent_;
+  ThermalPrinterComponent *parent_{nullptr};
   uint32_t last_check_{0};
+  bool last_paper_status_{true};
 };
 
 }  // namespace thermal_printer
