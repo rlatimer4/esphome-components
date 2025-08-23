@@ -65,38 +65,34 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
         ESP_LOGD(TAG, "Received counter data (%d chars): %s", result.length(), result.c_str());
         
         // Parse the data with bounds checking
-        try {
-            long num_single_espresso = strtol(result.substr(3,4).c_str(), nullptr, 16);
-            long num_double_espresso = strtol(result.substr(7,4).c_str(), nullptr, 16);
-            long num_coffee = strtol(result.substr(11,4).c_str(), nullptr, 16);
-            long num_double_coffee = strtol(result.substr(15,4).c_str(), nullptr, 16);
-            long num_clean = strtol(result.substr(35,4).c_str(), nullptr, 16);
+        long num_single_espresso = strtol(result.substr(3,4).c_str(), nullptr, 16);
+        long num_double_espresso = strtol(result.substr(7,4).c_str(), nullptr, 16);
+        long num_coffee = strtol(result.substr(11,4).c_str(), nullptr, 16);
+        long num_double_coffee = strtol(result.substr(15,4).c_str(), nullptr, 16);
+        long num_clean = strtol(result.substr(35,4).c_str(), nullptr, 16);
 
-            ESP_LOGV(TAG, "Parsed counters - Single: %ld, Double: %ld, Coffee: %ld, Double Coffee: %ld, Cleanings: %ld", 
-                     num_single_espresso, num_double_espresso, num_coffee, num_double_coffee, num_clean);
+        ESP_LOGV(TAG, "Parsed counters - Single: %ld, Double: %ld, Coffee: %ld, Double Coffee: %ld, Cleanings: %ld", 
+                 num_single_espresso, num_double_espresso, num_coffee, num_double_coffee, num_clean);
 
-            if (this->single_espresso_sensor_ != nullptr) {
-                this->single_espresso_sensor_->publish_state(num_single_espresso);
-                ESP_LOGV(TAG, "Published single espresso: %ld", num_single_espresso);
-            }
-            if (this->double_espresso_sensor_ != nullptr) {
-                this->double_espresso_sensor_->publish_state(num_double_espresso);
-                ESP_LOGV(TAG, "Published double espresso: %ld", num_double_espresso);
-            }
-            if (this->coffee_sensor_ != nullptr) {
-                this->coffee_sensor_->publish_state(num_coffee);
-                ESP_LOGV(TAG, "Published coffee: %ld", num_coffee);
-            }
-            if (this->double_coffee_sensor_ != nullptr) {
-                this->double_coffee_sensor_->publish_state(num_double_coffee);
-                ESP_LOGV(TAG, "Published double coffee: %ld", num_double_coffee);
-            }
-            if (this->cleanings_sensor_ != nullptr) {
-                this->cleanings_sensor_->publish_state(num_clean);
-                ESP_LOGV(TAG, "Published cleanings: %ld", num_clean);
-            }
-        } catch (const std::exception& e) {
-            ESP_LOGE(TAG, "Error parsing counter data: %s", e.what());
+        if (this->single_espresso_sensor_ != nullptr) {
+            this->single_espresso_sensor_->publish_state(num_single_espresso);
+            ESP_LOGV(TAG, "Published single espresso: %ld", num_single_espresso);
+        }
+        if (this->double_espresso_sensor_ != nullptr) {
+            this->double_espresso_sensor_->publish_state(num_double_espresso);
+            ESP_LOGV(TAG, "Published double espresso: %ld", num_double_espresso);
+        }
+        if (this->coffee_sensor_ != nullptr) {
+            this->coffee_sensor_->publish_state(num_coffee);
+            ESP_LOGV(TAG, "Published coffee: %ld", num_coffee);
+        }
+        if (this->double_coffee_sensor_ != nullptr) {
+            this->double_coffee_sensor_->publish_state(num_double_coffee);
+            ESP_LOGV(TAG, "Published double coffee: %ld", num_double_coffee);
+        }
+        if (this->cleanings_sensor_ != nullptr) {
+            this->cleanings_sensor_->publish_state(num_clean);
+            ESP_LOGV(TAG, "Published cleanings: %ld", num_clean);
         }
     }
 
@@ -110,27 +106,23 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
     } else {
         ESP_LOGD(TAG, "Received status data (%d chars): %s", result.length(), result.c_str());
         
-        try {
-            // Parse the data with bounds checking
-            uint8_t hex_to_byte = strtol(result.substr(3,2).c_str(), nullptr, 16);
-            int trayBit = bitRead(hex_to_byte, 4);
-            int tankBit = bitRead(hex_to_byte, 5);
-            
-            ESP_LOGV(TAG, "Status byte: 0x%02X, tray bit: %d, tank bit: %d", hex_to_byte, trayBit, tankBit);
-            
-            std::string tray_status = (trayBit == 1) ? "Not Fitted" : "OK";
-            std::string tank_status = (tankBit == 1) ? "Fill Tank" : "OK";
+        // Parse the data with bounds checking
+        uint8_t hex_to_byte = strtol(result.substr(3,2).c_str(), nullptr, 16);
+        int trayBit = bitRead(hex_to_byte, 4);
+        int tankBit = bitRead(hex_to_byte, 5);
+        
+        ESP_LOGV(TAG, "Status byte: 0x%02X, tray bit: %d, tank bit: %d", hex_to_byte, trayBit, tankBit);
+        
+        std::string tray_status = (trayBit == 1) ? "Not Fitted" : "OK";
+        std::string tank_status = (tankBit == 1) ? "Fill Tank" : "OK";
 
-            if (this->tray_status_sensor_ != nullptr) {
-                this->tray_status_sensor_->publish_state(tray_status);
-                ESP_LOGV(TAG, "Published tray status: %s", tray_status.c_str());
-            }
-            if (this->tank_status_sensor_ != nullptr) {
-                this->tank_status_sensor_->publish_state(tank_status);
-                ESP_LOGV(TAG, "Published tank status: %s", tank_status.c_str());
-            }
-        } catch (const std::exception& e) {
-            ESP_LOGE(TAG, "Error parsing status data: %s", e.what());
+        if (this->tray_status_sensor_ != nullptr) {
+            this->tray_status_sensor_->publish_state(tray_status);
+            ESP_LOGV(TAG, "Published tray status: %s", tray_status.c_str());
+        }
+        if (this->tank_status_sensor_ != nullptr) {
+            this->tank_status_sensor_->publish_state(tank_status);
+            ESP_LOGV(TAG, "Published tank status: %s", tank_status.c_str());
         }
     }
   }
