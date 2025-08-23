@@ -114,7 +114,7 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   uint32_t feeds_executed_{0};
   float paper_roll_length_{30000.0}; // 30 meters in mm
   float line_height_mm_{0.125}; // ~0.125mm per line for thermal paper
-  
+
   // Helper methods for paper tracking
   void track_print_operation(uint16_t chars, uint8_t lines = 0, uint8_t feeds = 0);
   void save_usage_to_flash();
@@ -122,7 +122,12 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   
   // Two column formatting helpers
   void print_padded_line(const char *left, const char *right, uint8_t total_width, char pad_char = '.');
-};
+  
+  // Helper methods
+  void write_bytes(uint8_t a);
+  void write_bytes(uint8_t a, uint8_t b);
+  void write_bytes(uint8_t a, uint8_t b, uint8_t c);
+  void write_bytes(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
 };
 
 }  // namespace thermal_printer
