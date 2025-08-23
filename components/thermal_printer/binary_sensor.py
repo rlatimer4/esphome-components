@@ -11,7 +11,10 @@ ThermalPrinterBinarySensor = thermal_printer_ns.class_(
 )
 
 CONFIG_SCHEMA = binary_sensor.binary_sensor_schema(
-    ThermalPrinterBinarySensor
+    ThermalPrinterBinarySensor,
+    entity_category=None,
+    icon=None,
+    device_class=None,
 ).extend({
     cv.GenerateID(CONF_THERMAL_PRINTER_ID): cv.use_id(ThermalPrinterComponent),
 }).extend(cv.COMPONENT_SCHEMA)
