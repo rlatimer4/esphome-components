@@ -4,8 +4,7 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/log.h"
 
-// Forward declarations for compatibility
-class Stream;
+// Forward declaration
 class Print;
 
 namespace esphome {
@@ -46,14 +45,10 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   void normal();
   void inverse_on(bool state = true);
   void inverse_off();
-  void upside_down_on(bool state = true);
-  void upside_down_off();
   void double_height_on(bool state = true);
   void double_height_off();
   void double_width_on(bool state = true);
   void double_width_off();
-  void strike_on(bool state = true);
-  void strike_off();
   void bold_on(bool state = true);
   void bold_off();
   void underline_on(bool state = true);
@@ -64,61 +59,51 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   void set_bar_code_height(uint8_t height = 50);
   void set_charset(uint8_t charset = 0);
   void set_code_page(uint8_t codePage = 0);
-  void tab();
-  void set_char_spacing(uint8_t spacing);
-  void set_times(unsigned long x, unsigned long y);
   void feed(uint8_t x = 1);
   void feed_rows(uint8_t rows);
-  void flush();
-  void print_bitmap(int w, int h, const uint8_t *bitmap, bool fromProgMem = true);
-  void print_bitmap(int w, int h, Stream *stream);
   void print_barcode(const char *text, uint8_t type);
   void print_barcode(int type, const char *text);
   void justify(char value);
   void set_default();
   void offline();
   void online();
-  void tab_stops(const uint8_t *stops);
-  void beep();
   void set_heat_config(uint8_t dots, uint8_t time, uint8_t interval);
 
   // ESPHome specific methods
   void print_text(const char *text);
+  void print_two_column(const char *left_text, const char *right_text, bool fill_dots = true);
+  void print_table_row(const char *col1, const char *col2, const char *col3 = nullptr);
   bool has_paper();
   void set_paper_check_callback(std::function<void(bool)> &&callback);
+  
+  // Paper usage estimation
+  float get_paper_usage_mm();
+  float get_paper_usage_percent(); // Based on 30m roll
+  void reset_paper_usage();
+  uint32_t get_lines_printed();
+  uint32_t get_characters_printed();
+  void set_paper_roll_length(float length_mm); // Default 30000mm (30m)
 
  protected:
-  void write_bytes(uint8_t a);
-  void write_bytes(uint8_t a, uint8_t b);
-  void write_bytes(uint8_t a, uint8_t b, uint8_t c);
-  void write_bytes(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
-
   uint32_t last_paper_check_{0};
   bool paper_status_{true};
   optional<std::function<void(bool)>> paper_check_callback_;
   
-  // Printer state
-  bool is_sleeping_{false};
-  uint8_t prev_byte_{'\n'};
-  uint8_t column_{0};
-  uint8_t max_column_{32};
-  uint8_t char_height_{24};
-  uint8_t line_spacing_{8};
-  uint8_t bar_code_height_{50};
+  // Paper usage tracking
+  uint32_t lines_printed_{0};
+  uint32_t characters_printed_{0};
+  uint32_t feeds_executed_{0};
+  float paper_roll_length_{30000.0}; // 30 meters in mm
+  float line_height_mm_{0.125}; // ~0.125mm per line for thermal paper
   
-  // Heat settings
-  uint8_t heat_dots_{7};      // 11*30us = 330us
-  uint8_t heat_time_{80};     // 80*10us = 800us  
-  uint8_t heat_interval_{2};  // 2*10us = 20us
-
-  // Print modes
-  uint8_t print_mode_{0};
-  static const uint8_t INVERSE = 1 << 1;
-  static const uint8_t UPDOWN = 1 << 2;
-  static const uint8_t BOLD = 1 << 3;
-  static const uint8_t DOUBLE_HEIGHT = 1 << 4;
-  static const uint8_t DOUBLE_WIDTH = 1 << 5;
-  static const uint8_t STRIKE = 1 << 6;
+  // Helper methods for paper tracking
+  void track_print_operation(uint16_t chars, uint8_t lines = 0, uint8_t feeds = 0);
+  void save_usage_to_flash();
+  void load_usage_from_flash();
+  
+  // Two column formatting helpers
+  void print_padded_line(const char *left, const char *right, uint8_t total_width, char pad_char = '.');
+};
 };
 
 }  // namespace thermal_printer
