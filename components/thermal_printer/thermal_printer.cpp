@@ -61,8 +61,6 @@ void ThermalPrinterComponent::loop() {
 
 void ThermalPrinterComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "Thermal Printer:");
-  LOG_PIN("  TX Pin: ", this->tx_pin_);
-  LOG_PIN("  RX Pin: ", this->rx_pin_);
   ESP_LOGCONFIG(TAG, "  Baud Rate: %d", this->parent_->get_baud_rate());
   ESP_LOGCONFIG(TAG, "  Lines Printed: %u", this->lines_printed_);
   ESP_LOGCONFIG(TAG, "  Characters Printed: %u", this->characters_printed_);
@@ -433,8 +431,8 @@ void ThermalPrinterComponent::save_usage_to_flash() {
   data.characters_printed = this->characters_printed_;
   data.feeds_executed = this->feeds_executed_;
   
-  auto *pref = global_preferences->make_preference<UsageData>(PAPER_USAGE_HASH);
-  pref->save(&data);
+  auto pref = global_preferences->make_preference<UsageData>(PAPER_USAGE_HASH);
+  pref.save(&data);
 }
 
 void ThermalPrinterComponent::load_usage_from_flash() {
@@ -444,8 +442,8 @@ void ThermalPrinterComponent::load_usage_from_flash() {
     uint32_t feeds_executed;
   } data;
   
-  auto *pref = global_preferences->make_preference<UsageData>(PAPER_USAGE_HASH);
-  if (pref->load(&data)) {
+  auto pref = global_preferences->make_preference<UsageData>(PAPER_USAGE_HASH);
+  if (pref.load(&data)) {
     this->lines_printed_ = data.lines_printed;
     this->characters_printed_ = data.characters_printed;
     this->feeds_executed_ = data.feeds_executed;
