@@ -10,12 +10,11 @@ ThermalPrinterBinarySensor = thermal_printer_ns.class_(
     "ThermalPrinterBinarySensor", binary_sensor.BinarySensor, cg.Component
 )
 
-CONFIG_SCHEMA = binary_sensor.BINARY_SENSOR_SCHEMA.extend(
-    {
-        cv.GenerateID(): cv.declare_id(ThermalPrinterBinarySensor),
-        cv.GenerateID(CONF_THERMAL_PRINTER_ID): cv.use_id(ThermalPrinterComponent),
-    }
-).extend(cv.COMPONENT_SCHEMA)
+CONFIG_SCHEMA = binary_sensor.binary_sensor_schema(
+    ThermalPrinterBinarySensor
+).extend({
+    cv.GenerateID(CONF_THERMAL_PRINTER_ID): cv.use_id(ThermalPrinterComponent),
+}).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
