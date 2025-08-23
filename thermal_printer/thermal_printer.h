@@ -4,15 +4,34 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/log.h"
 
-// Forward declaration
-class Print;
-
 namespace esphome {
 namespace thermal_printer {
 
 static const char *const TAG = "thermal_printer";
 
-// Barcode types for compatibility
+// Simple Print base class for ESPHome compatibility
+class Print {
+ public:
+  virtual ~Print() = default;
+  virtual size_t write(uint8_t) = 0;
+  virtual size_t write(const uint8_t *buffer, size_t size) = 0;
+  
+  size_t print(const char *str) {
+    return write(reinterpret_cast<const uint8_t *>(str), strlen(str));
+  }
+  
+  size_t println(const char *str) {
+    size_t n = print(str);
+    n += write('\n');
+    return n;
+  }
+  
+  size_t println() {
+    return write('\n');
+  }
+};
+
+// Barcode types
 enum BarCodeType {
   UPC_A = 0,
   UPC_E = 1,
@@ -36,7 +55,7 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   size_t write(uint8_t c) override;
   size_t write(const uint8_t *buffer, size_t size) override;
 
-  // Thermal printer methods
+  // Thermal printer control methods
   void wake();
   void sleep();
   void reset();
