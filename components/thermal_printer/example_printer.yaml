@@ -1,0 +1,312 @@
+# Text Sensors for status
+text_sensor:
+  - platform: thermal_printer
+    thermal_printer_id: my_thermal_printer
+    name: "Paper Status"
+    id: paper_status
+
+# Binary Sensors
+binary_sensor:
+  - platform: thermal_printer
+    thermal_printer_id: my_thermal_printer
+    name: "Paper Loaded"
+    id: paper_loaded
+
+# Template sensors for monitoring
+sensor:
+  - platform: uptime
+    name: "Uptime"
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+  - platform: template
+    name: "Paper Usage (mm)"
+    id: paper_usage_mm
+    icon: mdi:ruler
+    unit_of_measurement: "mm"
+    accuracy_decimals: 1
+    lambda: |-
+      return id(my_thermal_printer)->get_paper_usage_mm();
+    update_interval: 30s
+  - platform: template
+    name: "Paper Usage (%)"
+    id: paper_usage_percent
+    icon: mdi:percent
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    lambda: |-
+      return id(my_thermal_printer)->get_paper_usage_percent();
+    update_interval: 30s
+  - platform: template
+    name: "Lines Printed"
+    id: lines_printed
+    icon: mdi:format-line-spacing
+    lambda: |-
+      return id(my_thermal_printer)->get_lines_printed();
+    update_interval: 30s
+  - platform: template
+    name: "Characters Printed"
+    id: characters_printed
+    icon: mdi:alphabetical
+    lambda: |-
+      return id(my_thermal_printer)->get_characters_printed();
+    update_interval: 30sesphome:
+  name: thermal_printer
+  friendly_name: Thermal Printer
+  platform: ESP8266
+  board: d1_mini
+
+# WiFi Configuration
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Thermal-Printer Fallback Hotspot"
+    password: "thermalprint123"
+
+captive_portal:
+
+# Enable logging
+logger:
+  level: INFO
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# External Components
+external_components:
+  - source:
+      type: local
+      path: my_components
+
+# UART Configuration for thermal printer
+uart:
+  id: thermal_uart
+  tx_pin: GPIO4  # D2 on D1 Mini
+  rx_pin: GPIO0  # D3 on D1 Mini (not used for printing but defined for completeness)
+  baud_rate: 9600
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+
+# Thermal Printer Component
+thermal_printer:
+  id: my_thermal_printer
+  uart_id: thermal_uart
+
+# Text Sensors for status
+text_sensor:
+  - platform: thermal_printer
+    thermal_printer_id: my_thermal_printer
+    name: "Paper Status"
+    id: paper_status
+
+# Binary Sensors
+binary_sensor:
+  - platform: thermal_printer
+    thermal_printer_id: my_thermal_printer
+    name: "Paper Loaded"
+    id: paper_loaded
+
+# Template sensors for monitoring
+sensor:
+  - platform: uptime
+    name: "Uptime"
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+# Status LED
+status_led:
+  pin:
+    number: GPIO2  # Built-in LED on D1 Mini
+    inverted: true
+
+# Services exposed to Home Assistant
+api:
+  services:
+    - service: print_text
+      variables:
+        text: string
+        size: string
+        justify: string
+        bold: bool
+        underline: bool
+        inverse: bool
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            
+            // Set text formatting
+            if (size == "S" || size == "small") {
+              printer->set_text_size(1);
+            } else if (size == "M" || size == "medium") {
+              printer->set_text_size(2);
+            } else if (size == "L" || size == "large") {
+              printer->set_text_size(3);
+            }
+            
+            // Set justification
+            if (justify == "L" || justify == "left") {
+              printer->justify('L');
+            } else if (justify == "C" || justify == "center") {
+              printer->justify('C');
+            } else if (justify == "R" || justify == "right") {
+              printer->justify('R');
+            }
+            
+            // Set formatting
+            printer->bold_on(bold);
+            printer->underline_on(underline);
+            printer->inverse_on(inverse);
+            
+            // Print text
+            printer->print_text(text.c_str());
+            printer->println();
+            
+            // Reset formatting
+            printer->bold_off();
+            printer->underline_off();
+            printer->inverse_off();
+            printer->justify('L');
+
+    - service: print_barcode
+      variables:
+        barcode_type: int
+        barcode_data: string
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            printer->print_barcode(barcode_type, barcode_data.c_str());
+
+    - service: feed_paper
+      variables:
+        lines: int
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            printer->feed(lines);
+
+    - service: wake_printer
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            printer->wake();
+
+    - service: sleep_printer
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            printer->sleep();
+
+    - service: print_two_column
+      variables:
+        left_text: string
+        right_text: string
+        fill_dots: bool
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            printer->print_two_column(left_text.c_str(), right_text.c_str(), fill_dots);
+
+    - service: print_table_row
+      variables:
+        col1: string
+        col2: string
+        col3: string
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            if (col3.empty()) {
+              printer->print_table_row(col1.c_str(), col2.c_str());
+            } else {
+              printer->print_table_row(col1.c_str(), col2.c_str(), col3.c_str());
+            }
+
+    - service: reset_paper_usage
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            printer->reset_paper_usage();
+
+    - service: set_paper_roll_length
+      variables:
+        length_mm: float
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            printer->set_paper_roll_length(length_mm);
+
+# Automation examples
+automation:
+  - alias: "Print startup message"
+    trigger:
+      - platform: homeassistant
+        event: start
+    action:
+      - delay: 30s  # Wait for everything to initialize
+      - service: print_text
+        data:
+          text: "Thermal Printer Online"
+          size: "M"
+          justify: "C"
+          bold: true
+          underline: false
+          inverse: false
+
+# Switch for printer power management
+switch:
+  - platform: template
+    name: "Printer Wake"
+    id: printer_wake_switch
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(my_thermal_printer)->wake();
+    turn_off_action:
+      - lambda: |-
+          id(my_thermal_printer)->sleep();
+
+# Number input for line spacing
+number:
+  - platform: template
+    name: "Line Spacing"
+    id: line_spacing
+    min_value: 24
+    max_value: 64
+    initial_value: 32
+    step: 1
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(my_thermal_printer)->set_line_height(x);
+
+# Select for default text size
+select:
+  - platform: template
+    name: "Default Text Size"
+    id: default_text_size
+    optimistic: true
+    options:
+      - "Small"
+      - "Medium" 
+      - "Large"
+    initial_option: "Medium"
+    set_action:
+      - lambda: |-
+          auto printer = id(my_thermal_printer);
+          if (x == "Small") {
+            printer->set_text_size(1);
+          } else if (x == "Medium") {
+            printer->set_text_size(2);
+          } else if (x == "Large") {
+            printer->set_text_size(3);
+          }
