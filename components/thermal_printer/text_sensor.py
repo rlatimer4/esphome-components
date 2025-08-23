@@ -11,10 +11,7 @@ ThermalPrinterTextSensor = thermal_printer_ns.class_(
 )
 
 CONFIG_SCHEMA = text_sensor.text_sensor_schema(
-    ThermalPrinterTextSensor,
-    entity_category=None,
-    icon=None,
-    device_class=None,
+    ThermalPrinterTextSensor
 ).extend({
     cv.GenerateID(CONF_THERMAL_PRINTER_ID): cv.use_id(ThermalPrinterComponent),
 }).extend(cv.COMPONENT_SCHEMA)
