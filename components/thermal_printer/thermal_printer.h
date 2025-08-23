@@ -7,8 +7,6 @@
 namespace esphome {
 namespace thermal_printer {
 
-static const char *const TAG = "thermal_printer";
-
 // Simple Print base class for ESPHome compatibility
 class Print {
  public:
