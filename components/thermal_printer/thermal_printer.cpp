@@ -589,19 +589,52 @@ void ThermalPrinterComponent::print_rotated_text(const char* text, uint8_t rotat
     return;
   }
   
-  // Set rotation
-  this->set_rotation(rotation);
+  if (rotation == 1) {
+    // 90-degree rotation: Print text vertically down the paper roll
+    ESP_LOGI(TAG, "Printing text vertically down the paper roll");
+    
+    // Center the text horizontally
+    this->justify('C');
+    
+    // Print each character on its own line for vertical effect
+    for (size_t i = 0; i < strlen(text); i++) {
+      if (text[i] == ' ') {
+        // Print a visual space indicator or just a blank line
+        this->print_text(" ");
+        this->feed(1);
+      } else if (text[i] == '\n') {
+        // Add extra space for paragraph breaks
+        this->feed(2);
+      } else {
+        // Print each character centered on its own line
+        char single_char[2] = {text[i], '\0'};
+        this->print_text(single_char);
+        this->feed(1);
+      }
+    }
+    
+    // Add some spacing at the end
+    this->feed(2);
+    
+  } else if (rotation == 2) {
+    // 180-degree rotation: Print text upside down (if printer supports it)
+    this->set_rotation(2);
+    this->print_text(text);
+    this->set_rotation(0);
+    this->feed(2);
+    
+  } else {
+    // Use ESC/POS rotation commands for other rotations
+    this->set_rotation(rotation);
+    this->print_text(text);
+    this->set_rotation(0);
+    this->feed(2);
+  }
   
-  // Print the text
-  this->print_text(text);
+  // Reset alignment
+  this->justify('L');
   
-  // Reset to normal rotation
-  this->set_rotation(0);
-  
-  // Add extra feed for rotated text
-  this->feed(2);
-  
-  ESP_LOGI(TAG, "Printed rotated text: %d degrees", rotation * 90);
+  ESP_LOGI(TAG, "Rotated text printed: %d rotation", rotation);
 }
 
 // QR Code Generation - Fixed to use individual write_byte calls
