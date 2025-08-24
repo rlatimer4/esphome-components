@@ -124,8 +124,10 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
     ESP_LOGV(TAG, "Received response: %s", response.c_str());
     return response;
   }
-
 };
+
+}  // namespace jura_test
+}  // namespace esphome
 };
 
 }  // namespace jura_test
