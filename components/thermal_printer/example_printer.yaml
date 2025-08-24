@@ -1,5 +1,5 @@
-# Enhanced ESPHome Thermal Printer Configuration
-# Phase 1 Implementation with 90° Rotation, QR Codes, and Advanced Features
+# Minimal Working Enhanced Thermal Printer Configuration
+# Phase 1 Implementation - Core Features Only
 
 esphome:
   name: thermal_printer_enhanced
@@ -12,28 +12,46 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   
-  # Enable fallback hotspot
   ap:
     ssid: "ThermalPrinter-Enhanced"
     password: "thermalprint123"
 
 captive_portal:
 
-# Enhanced logging with component-specific levels
+# Logging
 logger:
   level: INFO
   logs:
     thermal_printer: DEBUG
-    uart: INFO
 
-# Enable Home Assistant API with enhanced actions
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# External Components
+external_components:
+  - source:
+      type: local
+      path: my_components
+
+# UART Configuration
+uart:
+  id: thermal_uart
+  tx_pin: GPIO4  # D2 on D1 Mini
+  rx_pin: GPIO0  # D3 on D1 Mini  
+  baud_rate: 9600
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+
+# Enhanced Home Assistant API with working Phase 1 services
 api:
   encryption:
     key: !secret api_encryption_key
   
-  # Phase 1: Enhanced Actions with New Features
+  # Core working services for Phase 1
   actions:
-    # Basic text printing with rotation support
+    # Enhanced text printing with rotation support
     - action: print_text
       variables:
         message: string
@@ -42,7 +60,7 @@ api:
         bold: bool
         underline: bool
         inverse: bool
-        rotation: int  # NEW: 0=normal, 1=90°, 2=180°, 3=270°
+        rotation: int  # 0=normal, 1=90°, 2=180°, 3=270°
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
@@ -84,7 +102,7 @@ api:
             printer->inverse_off();
             printer->justify('L');
 
-    # NEW: 90-degree rotated text printing
+    # 90-degree rotated text printing
     - action: print_rotated_text
       variables:
         message: string
@@ -94,7 +112,7 @@ api:
             auto printer = id(my_thermal_printer);
             printer->print_rotated_text(message.c_str(), rotation);
 
-    # New QR code service - simplified
+    # QR Code printing
     - action: print_qr_code
       variables:
         data: string
@@ -118,7 +136,7 @@ api:
         left_text: string
         right_text: string
         fill_dots: bool
-        text_size: string  # NEW: Size support for columns
+        text_size: string
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
@@ -129,55 +147,7 @@ api:
             printer->print_two_column(left_text.c_str(), right_text.c_str(), 
                                      fill_dots, size_char);
 
-    # Enhanced table printing
-    - action: print_table_row
-      variables:
-        col1: string
-        col2: string
-        col3: string
-        header: bool  # NEW: Format as header row
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            
-            if (header) {
-              printer->bold_on();
-              printer->underline_on();
-            }
-            
-            if (col3.empty()) {
-              printer->print_table_row(col1.c_str(), col2.c_str());
-            } else {
-              printer->print_table_row(col1.c_str(), col2.c_str(), col3.c_str());
-            }
-            
-            if (header) {
-              printer->bold_off();
-              printer->underline_off();
-            }
-
-    # NEW: Safe printing with error handling
-    - action: safe_print_text
-      variables:
-        message: string
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            auto result = printer->safe_print_text(message.c_str());
-            
-            const char* result_str = "Unknown";
-            switch (result) {
-              case PrintResult::SUCCESS: result_str = "Success"; break;
-              case PrintResult::PAPER_OUT: result_str = "Paper Out"; break;
-              case PrintResult::COVER_OPEN: result_str = "Cover Open"; break;
-              case PrintResult::COMMUNICATION_ERROR: result_str = "Communication Error"; break;
-              case PrintResult::INSUFFICIENT_PAPER: result_str = "Insufficient Paper"; break;
-              case PrintResult::PRINTER_OFFLINE: result_str = "Printer Offline"; break;
-            }
-            
-            ESP_LOGI("thermal_printer", "Print result: %s", result_str);
-
-    # Simplified receipt template
+    # Simple receipt printing
     - action: print_receipt
       variables:
         business_name: string
@@ -187,7 +157,7 @@ api:
             auto printer = id(my_thermal_printer);
             printer->print_simple_receipt(business_name.c_str(), total.c_str());
 
-    # Simplified shopping list
+    # Simple shopping list
     - action: print_shopping_list
       variables:
         items: string
@@ -196,33 +166,23 @@ api:
             auto printer = id(my_thermal_printer);
             printer->print_shopping_list(items.c_str());
 
-    # NEW: Advanced paper management
-    - action: check_paper_sufficiency
+    # Safe printing with error checking
+    - action: safe_print_text
       variables:
-        estimated_lines: int
+        message: string
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            bool sufficient = printer->can_print_job(estimated_lines);
-            ESP_LOGI("thermal_printer", "Paper sufficiency check: %s for %d lines", 
-                     sufficient ? "OK" : "INSUFFICIENT", estimated_lines);
-
-    # NEW: Predict paper usage
-    - action: predict_paper_usage
-      variables:
-        text: string
-        text_size: string
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            char size = 'S';
-            if (text_size == "M") size = 'M';
-            else if (text_size == "L") size = 'L';
+            auto result = printer->safe_print_text(message.c_str());
             
-            float predicted_mm = printer->predict_paper_usage_for_job(text.c_str(), size);
-            ESP_LOGI("thermal_printer", "Predicted paper usage: %.1fmm", predicted_mm);
+            // Log the result
+            if (result == PrintResult::SUCCESS) {
+              ESP_LOGI("thermal_printer", "Print successful");
+            } else {
+              ESP_LOGW("thermal_printer", "Print failed - check paper/printer status");
+            }
 
-    # Existing enhanced actions
+    # Existing basic services
     - action: print_barcode
       variables:
         barcode_type: int
@@ -272,80 +232,33 @@ api:
             auto printer = id(my_thermal_printer);
             printer->set_paper_roll_length(length_mm);
 
-    # NEW: Advanced heat configuration
-    - action: set_heat_config
-      variables:
-        dots: int      # 1-15 heating dots
-        time: int      # 50-200 heat time
-        interval: int  # 1-10 heat interval  
-        density: int   # 1-15 print density
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            printer->set_heat_config_advanced(dots, time, interval, density);
-
-    # NEW: Error recovery
+    # Error recovery
     - action: recover_printer
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             printer->recover_from_error();
 
-    # NEW: Performance monitoring
-    - action: log_performance
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            printer->log_performance_stats();
 
-ota:
-  - platform: esphome
-    password: !secret ota_password
-
-# Time component for timestamps
-time:
-  - platform: sntp
-    id: current_time
-    timezone: America/New_York  # Adjust for your timezone
-
-# External Components
-external_components:
-  - source:
-      type: local
-      path: my_components
-
-# Enhanced UART Configuration
-uart:
-  id: thermal_uart
-  tx_pin: GPIO4  # D2 on D1 Mini
-  rx_pin: GPIO0  # D3 on D1 Mini  
-  baud_rate: 9600
-  data_bits: 8
-  parity: NONE
-  stop_bits: 1
 
 # Enhanced Thermal Printer Component with Phase 1 Features
 thermal_printer:
   id: my_thermal_printer
   uart_id: thermal_uart
-  # NEW: Enhanced configuration options
-  paper_width: 58          # Paper width in mm
-  chars_per_line: 32       # Characters per line for normal text
-  heat_dots: 7             # Heating dots (1-15)
-  heat_time: 80            # Heat time (50-200)
-  heat_interval: 2         # Heat interval (1-10)
-  auto_sleep: true         # Auto-sleep when idle
-  paper_roll_length: 30000 # Paper roll length in mm (30m)
-  line_height_calibration: 4.0  # mm per line calibration
+  paper_roll_length: 30000
+  line_height_calibration: 4.0
+  enable_rotation: true
+  enable_qr_codes: true
+  startup_message: true
 
-# Enhanced Text Sensors
+# Text Sensors
 text_sensor:
   - platform: thermal_printer
     thermal_printer_id: my_thermal_printer
     name: "Paper Status"
     id: paper_status
 
-  # Simplified status sensor without complex struct dependency
+  # Simple printer status
   - platform: template
     name: "Printer Status"
     id: printer_status_simple
@@ -358,24 +271,24 @@ text_sensor:
       }
     update_interval: 30s
 
-# Enhanced Binary Sensors
+# Binary Sensors
 binary_sensor:
   - platform: thermal_printer
     thermal_printer_id: my_thermal_printer
     name: "Paper Loaded"
     id: paper_loaded
-    device_class: paper
+    # Removed device_class: paper (doesn't exist)
 
-  # Simplified cover sensor
+  # Simple printer online check
   - platform: template
     name: "Printer Online"
     id: printer_online
     device_class: connectivity
     lambda: |-
       return id(my_thermal_printer)->has_paper(); // Simplified check
-    update_interval: 30s
+    # Removed update_interval (binary_sensor doesn't support it)
 
-# Enhanced Sensors with Performance Monitoring
+# Sensors
 sensor:
   - platform: uptime
     name: "Uptime"
@@ -384,7 +297,7 @@ sensor:
     name: "WiFi Signal"
     update_interval: 60s
 
-  # Existing usage sensors
+  # Usage sensors
   - platform: template
     name: "Paper Usage (mm)"
     id: paper_usage_mm
@@ -424,7 +337,7 @@ sensor:
       return id(my_thermal_printer)->get_characters_printed();
     update_interval: 30s
 
-  # NEW: Performance metrics
+  # Performance metrics
   - platform: template
     name: "Characters Per Minute"
     id: chars_per_minute
@@ -440,35 +353,6 @@ sensor:
     update_interval: 60s
 
   - platform: template
-    name: "Paper Efficiency"
-    id: paper_efficiency
-    icon: mdi:leaf
-    unit_of_measurement: "chars/mm"
-    accuracy_decimals: 2
-    lambda: |-
-      float usage_mm = id(my_thermal_printer)->get_paper_usage_mm();
-      if (usage_mm > 0) {
-        return id(my_thermal_printer)->get_characters_printed() / usage_mm;
-      }
-      return 0.0f;
-    update_interval: 60s
-
-  # Simplified temperature sensor
-  - platform: template
-    name: "Printer Temperature"
-    id: printer_temperature
-    icon: mdi:thermometer
-    unit_of_measurement: "°C"
-    accuracy_decimals: 1
-    device_class: temperature
-    lambda: |-
-      // Simple temperature estimate based on activity
-      uint32_t recent_activity = millis() - id(my_thermal_printer)->get_lines_printed() * 1000;
-      return recent_activity < 30000 ? 45.0f : 25.0f;
-    update_interval: 60s
-
-  # NEW: Paper remaining estimate
-  - platform: template
     name: "Paper Remaining (mm)"
     id: paper_remaining_mm
     icon: mdi:tape-measure
@@ -480,13 +364,13 @@ sensor:
       return std::max(0.0f, total - used);
     update_interval: 30s
 
-# Enhanced Status LED with Paper Indication
+# Status LED
 status_led:
   pin:
-    number: GPIO2  # Built-in LED on D1 Mini
+    number: GPIO2
     inverted: true
 
-# Enhanced Switches
+# Switches
 switch:
   - platform: template
     name: "Printer Wake"
@@ -500,15 +384,7 @@ switch:
       - lambda: |-
           id(my_thermal_printer)->sleep();
 
-  # NEW: Auto-sleep toggle
-  - platform: template
-    name: "Auto Sleep Mode"
-    id: auto_sleep_switch
-    icon: mdi:sleep
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
-
-# Enhanced Number Controls
+# Number Controls
 number:
   - platform: template
     name: "Line Spacing"
@@ -524,54 +400,7 @@ number:
       - lambda: |-
           id(my_thermal_printer)->set_line_height(x);
 
-  # NEW: Heat configuration controls
-  - platform: template
-    name: "Heat Dots"
-    id: heat_dots
-    icon: mdi:heat-wave
-    min_value: 1
-    max_value: 15
-    initial_value: 7
-    step: 1
-    mode: box
-    optimistic: true
-    set_action:
-      - lambda: |-
-          // Update heat config when changed
-          auto printer = id(my_thermal_printer);
-          printer->set_heat_config_advanced(x, 80, 2, 4);
-
-  - platform: template
-    name: "Heat Time"
-    id: heat_time
-    icon: mdi:timer
-    min_value: 50
-    max_value: 200
-    initial_value: 80
-    step: 5
-    mode: box
-    optimistic: true
-    set_action:
-      - lambda: |-
-          auto printer = id(my_thermal_printer);
-          printer->set_heat_config_advanced(7, x, 2, 4);
-
-  # NEW: Paper roll length configuration
-  - platform: template
-    name: "Paper Roll Length (m)"
-    id: paper_roll_length
-    icon: mdi:tape-measure
-    min_value: 10
-    max_value: 100
-    initial_value: 30
-    step: 5
-    mode: box
-    optimistic: true
-    set_action:
-      - lambda: |-
-          id(my_thermal_printer)->set_paper_roll_length(x * 1000); // Convert to mm
-
-# Enhanced Select Controls
+# Select Controls
 select:
   - platform: template
     name: "Default Text Size"
@@ -594,32 +423,7 @@ select:
             printer->set_text_size(3);
           }
 
-  # NEW: Heat profile presets
-  - platform: template
-    name: "Heat Profile"
-    id: heat_profile
-    icon: mdi:fire
-    optimistic: true
-    options:
-      - "Eco (Cool)"
-      - "Standard"
-      - "High Quality"
-      - "Fast Print"
-    initial_option: "Standard"
-    set_action:
-      - lambda: |-
-          auto printer = id(my_thermal_printer);
-          if (x == "Eco (Cool)") {
-            printer->set_heat_config_advanced(5, 60, 3, 3);
-          } else if (x == "Standard") {
-            printer->set_heat_config_advanced(7, 80, 2, 4);
-          } else if (x == "High Quality") {
-            printer->set_heat_config_advanced(11, 120, 1, 6);
-          } else if (x == "Fast Print") {
-            printer->set_heat_config_advanced(9, 60, 1, 5);
-          }
-
-# NEW: Button Controls for Quick Actions
+# Button Controls
 button:
   - platform: template
     name: "Print Test Page"
@@ -642,166 +446,7 @@ button:
           printer->feed(1);
           printer->justify('L');
 
-  - platform: template
-    name: "Emergency Paper Cut"
-    id: paper_cut_button
-    icon: mdi:content-cut
-    on_press:
-      - lambda: |-
-          auto printer = id(my_thermal_printer);
-          printer->feed(10); // Feed extra paper for manual cutting
-
-  # NEW: QR Code quick actions
-  - platform: template
-    name: "Print WiFi QR Code"
-    id: wifi_qr_button
-    icon: mdi:wifi-cog
-    on_press:
-      - lambda: |-
-          auto printer = id(my_thermal_printer);
-          // Create WiFi QR code data
-          std::string wifi_qr = "WIFI:T:WPA;S:!secret wifi_ssid;P:!secret wifi_password;;";
-          printer->print_qr_code_with_label(wifi_qr.c_str(), "WiFi Network", 3);
-
-# NEW: Interval Components for Monitoring
-interval:
-  # Auto-save usage data every 5 minutes
-  - interval: 5min
-    then:
-      - lambda: |-
-          id(my_thermal_printer)->save_usage_to_flash();
-
-  # Performance logging every hour
-  - interval: 1h
-    then:
-      - lambda: |-
-          id(my_thermal_printer)->log_performance_stats();
-
-  # Paper usage warnings
-  - interval: 30s
-    then:
-      - lambda: |-
-          float usage_percent = id(my_thermal_printer)->get_paper_usage_percent();
-          static float last_warning_percent = 0;
-          
-          // Warn at 80%, 90%, 95% thresholds
-          if (usage_percent >= 95 && last_warning_percent < 95) {
-            ESP_LOGW("thermal_printer", "CRITICAL: Paper usage at %.1f%% - Replace immediately!", usage_percent);
-            last_warning_percent = 95;
-          } else if (usage_percent >= 90 && last_warning_percent < 90) {
-            ESP_LOGW("thermal_printer", "WARNING: Paper usage at %.1f%% - Replace soon!", usage_percent);
-            last_warning_percent = 90;
-          } else if (usage_percent >= 80 && last_warning_percent < 80) {
-            ESP_LOGI("thermal_printer", "Notice: Paper usage at %.1f%% - Consider replacing", usage_percent);
-            last_warning_percent = 80;
-          }
-
-# NEW: Automation Examples
-automation:
-  # Welcome message on startup
-  - trigger:
-      - platform: homeassistant
-        event: start
-    then:
-      - delay: 30s  # Wait for everything to initialize
-      - lambda: |-
-          auto printer = id(my_thermal_printer);
-          if (printer->has_paper()) {
-            printer->justify('C');
-            printer->set_text_size(2);
-            printer->bold_on();
-            printer->print_text("ESPHome Printer");
-            printer->bold_off();
-            printer->feed(1);
-            
-            printer->set_text_size(1);
-            char startup_msg[64];
-            auto time = id(current_time).now();
-            if (time.is_valid()) {
-              time.strftime(startup_msg, sizeof(startup_msg), "Started: %H:%M %m/%d");
-              printer->print_text(startup_msg);
-            } else {
-              printer->print_text("System Ready");
-            }
-            printer->feed(2);
-            printer->justify('L');
-            printer->set_text_size(2);
-          }
-
-  # Paper low warning automation
-  - trigger:
-      - platform: numeric_state
-        entity_id: sensor.thermal_printer_paper_usage_percent
-        above: 90
-    action:
-      - lambda: |-
-          auto printer = id(my_thermal_printer);
-          if (printer->has_paper()) {
-            printer->justify('C');
-            printer->bold_on();
-            printer->print_text("! PAPER LOW !");
-            printer->bold_off();
-            printer->feed(1);
-            
-            char warning_msg[64];
-            float usage = id(paper_usage_percent).state;
-            snprintf(warning_msg, sizeof(warning_msg), "Usage: %.1f%%", usage);
-            printer->print_text(warning_msg);
-            printer->feed(2);
-            printer->justify('L');
-          }
-
-  # Auto-sleep when idle (if enabled)
-  - trigger:
-      - platform: time
-        seconds: 0
-        minutes: /5  # Every 5 minutes
-    condition:
-      - lambda: return id(auto_sleep_switch).state;
-    action:
-      - lambda: |-
-          // Check if printer has been idle for 10 minutes
-          static uint32_t last_activity_time = 0;
-          uint32_t current_time = millis();
-          uint32_t last_chars = id(my_thermal_printer)->get_characters_printed();
-          static uint32_t previous_chars = 0;
-          
-          if (last_chars != previous_chars) {
-            last_activity_time = current_time;
-            previous_chars = last_chars;
-          } else if (current_time - last_activity_time > 600000) { // 10 minutes
-            ESP_LOGI("thermal_printer", "Auto-sleeping printer after 10 minutes idle");
-            id(my_thermal_printer)->sleep();
-          }
-
-# Enhanced Web Server for Remote Control
+# Web Server
 web_server:
   port: 80
   version: 2
-  include_internal: true
-  
-# NEW: Deep Sleep Support (Optional)
-deep_sleep:
-  id: deep_sleep_control
-  sleep_duration: 1h
-  wakeup_pin: GPIO0
-  wakeup_pin_mode: INVERT_WAKEUP
-
-# NEW: MQTT Integration (Optional)
-mqtt:
-  broker: !secret mqtt_broker
-  username: !secret mqtt_user
-  password: !secret mqtt_password
-  topic_prefix: esphome/thermal_printer
-  
-  # Publish enhanced status
-  on_message:
-    - topic: esphome/thermal_printer/print_command
-      then:
-        - lambda: |-
-            std::string message = x;
-            id(my_thermal_printer)->safe_print_text(message.c_str());
-
-# NEW: Advanced Diagnostics
-debug:
-  update_interval: 60s
