@@ -3,17 +3,9 @@
 #include "esphome/core/component.h"
 #include "esphome/core/log.h"
 #include "esphome/components/uart/uart.h"
+#include "esphome/components/sensor/sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include <string>
-
-// Forward declarations - only include headers if sensors are actually configured
-namespace esphome {
-  namespace sensor {
-    class Sensor;
-  }
-  namespace text_sensor {
-    class TextSensor;
-  }
-}
 
 namespace esphome {
 namespace jura_test {
@@ -33,8 +25,8 @@ static bool endsWith(const std::string& str, const std::string& suffix) {
 class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
  public:
   // Optional sensor setters
-  void set_single_espresso_sensor(esphome::sensor::Sensor *s) { this->single_espresso_sensor_ = s; }
-  void set_tank_status_sensor(esphome::text_sensor::TextSensor *s) { this->tank_status_sensor_ = s; }
+  void set_single_espresso_sensor(sensor::Sensor *s) { this->single_espresso_sensor_ = s; }
+  void set_tank_status_sensor(text_sensor::TextSensor *s) { this->tank_status_sensor_ = s; }
 
   void setup() override {
     ESP_LOGCONFIG(TAG, "Setting up Jura Test component...");
@@ -132,8 +124,8 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
   }
 
   // Optional sensor pointers
-  esphome::sensor::Sensor *single_espresso_sensor_{nullptr};
-  esphome::text_sensor::TextSensor *tank_status_sensor_{nullptr};
+  sensor::Sensor *single_espresso_sensor_{nullptr};
+  text_sensor::TextSensor *tank_status_sensor_{nullptr};
 };
 
 }  // namespace jura_test
