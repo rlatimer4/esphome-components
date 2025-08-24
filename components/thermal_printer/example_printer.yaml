@@ -48,8 +48,7 @@ uart:
 api:
   encryption:
     key: !secret api_encryption_key
- 
-  # Ultra-simple working services for Phase 1
+ # Ultra-simple working services for Phase 1
   actions:
     # Basic enhanced text printing with rotation
     - action: print_text
@@ -89,15 +88,45 @@ api:
             printer->inverse_off();
             printer->justify('L');
 
-    # 90-degree rotated text - NEW Phase 1 Feature
+    # Enhanced 90-degree rotated text - NEW: Prints vertically down the paper
     - action: print_rotated_text
       variables:
         message: string
-        rotation: int
+        rotation: int  # 1=vertical down paper, 2=180°, 3=270°
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             printer->print_rotated_text(message.c_str(), rotation);
+
+    # NEW: Dedicated vertical text service for clarity
+    - action: print_vertical_text
+      variables:
+        message: string
+        spacing: int  # Lines between characters (default 1)
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            // Print text vertically with custom spacing
+            printer->justify('C');
+            
+            const char* text = message.c_str();
+            int char_spacing = spacing > 0 ? spacing : 1;
+            
+            for (size_t i = 0; i < strlen(text); i++) {
+              if (text[i] == ' ') {
+                printer->print_text("·");  // Visual space
+                printer->feed(char_spacing);
+              } else if (text[i] != '\n') {
+                char single_char[2] = {text[i], '\0'};
+                printer->print_text(single_char);
+                printer->feed(char_spacing);
+              } else {
+                printer->feed(char_spacing * 2);  // Extra space for line breaks
+              }
+            }
+            
+            printer->feed(2);  // Final spacing
+            printer->justify('L');  // Reset alignment
 
     # QR Code printing - NEW Phase 1 Feature  
     - action: print_qr_code
@@ -230,7 +259,7 @@ api:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             printer->recover_from_error();
-
+            
 thermal_printer:
   id: my_thermal_printer
   uart_id: thermal_uart
