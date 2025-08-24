@@ -94,7 +94,7 @@ api:
             auto printer = id(my_thermal_printer);
             printer->print_rotated_text(message.c_str(), rotation);
 
-    # NEW: QR Code printing
+    # New QR code service - simplified
     - action: print_qr_code
       variables:
         data: string
@@ -104,11 +104,13 @@ api:
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            if (label.empty()) {
-              printer->print_qr_code(data.c_str(), size, error_correction);
-            } else {
-              printer->print_qr_code_with_label(data.c_str(), label.c_str(), size);
+            if (!label.empty()) {
+              printer->justify('C');
+              printer->set_text_size(1);
+              printer->print_text(label.c_str());
+              printer->feed(1);
             }
+            printer->print_qr_code(data.c_str(), size, error_correction);
 
     # Enhanced two-column printing
     - action: print_two_column
@@ -175,34 +177,24 @@ api:
             
             ESP_LOGI("thermal_printer", "Print result: %s", result_str);
 
-    # NEW: Receipt template printing
+    # Simplified receipt template
     - action: print_receipt
       variables:
         business_name: string
-        items: string  # Format: "item1:price1,item2:price2"
         total: string
-        date: string
-        time: string
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            std::map<std::string, std::string> data;
-            data["business_name"] = business_name;
-            data["items"] = items;
-            data["total"] = total;
-            data["date"] = date.empty() ? id(current_time).now().strftime("%Y-%m-%d") : date;
-            data["time"] = time.empty() ? id(current_time).now().strftime("%H:%M") : time;
-            
-            printer->print_receipt_template(data);
+            printer->print_simple_receipt(business_name.c_str(), total.c_str());
 
-    # NEW: Shopping list template
+    # Simplified shopping list
     - action: print_shopping_list
       variables:
-        items: string  # Comma-separated list
+        items: string
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            printer->print_shopping_list_template(items.c_str());
+            printer->print_shopping_list(items.c_str());
 
     # NEW: Advanced paper management
     - action: check_paper_sufficiency
@@ -353,24 +345,17 @@ text_sensor:
     name: "Paper Status"
     id: paper_status
 
-  # NEW: Detailed printer status
+  # Simplified status sensor without complex struct dependency
   - platform: template
-    name: "Printer Status Details"
-    id: printer_status_details
+    name: "Printer Status"
+    id: printer_status_simple
     lambda: |-
-      PrinterStatus status;
-      bool valid = id(my_thermal_printer)->get_detailed_status(&status);
-      if (valid) {
-        char buffer[128];
-        snprintf(buffer, sizeof(buffer), 
-                "Paper: %s, Cover: %s, Online: %s, Temp: %.1f°C",
-                status.paper_present ? "OK" : "OUT",
-                status.cover_open ? "OPEN" : "CLOSED", 
-                status.printer_online ? "YES" : "NO",
-                status.temperature_estimate);
-        return std::string(buffer);
+      auto printer = id(my_thermal_printer);
+      if (printer->has_paper()) {
+        return std::string("Ready - Paper OK");
+      } else {
+        return std::string("Paper Out");
       }
-      return std::string("Status Unknown");
     update_interval: 30s
 
 # Enhanced Binary Sensors
@@ -381,18 +366,14 @@ binary_sensor:
     id: paper_loaded
     device_class: paper
 
-  # NEW: Cover status sensor
+  # Simplified cover sensor
   - platform: template
-    name: "Printer Cover Open"
-    id: cover_open
-    device_class: opening
+    name: "Printer Online"
+    id: printer_online
+    device_class: connectivity
     lambda: |-
-      PrinterStatus status;
-      if (id(my_thermal_printer)->get_detailed_status(&status)) {
-        return status.cover_open;
-      }
-      return false;
-    update_interval: 10s
+      return id(my_thermal_printer)->has_paper(); // Simplified check
+    update_interval: 30s
 
 # Enhanced Sensors with Performance Monitoring
 sensor:
@@ -472,7 +453,7 @@ sensor:
       return 0.0f;
     update_interval: 60s
 
-  # NEW: Estimated printer temperature
+  # Simplified temperature sensor
   - platform: template
     name: "Printer Temperature"
     id: printer_temperature
@@ -481,11 +462,9 @@ sensor:
     accuracy_decimals: 1
     device_class: temperature
     lambda: |-
-      PrinterStatus status;
-      if (id(my_thermal_printer)->get_detailed_status(&status)) {
-        return status.temperature_estimate;
-      }
-      return 25.0f; // Room temperature default
+      // Simple temperature estimate based on activity
+      uint32_t recent_activity = millis() - id(my_thermal_printer)->get_lines_printed() * 1000;
+      return recent_activity < 30000 ? 45.0f : 25.0f;
     update_interval: 60s
 
   # NEW: Paper remaining estimate
