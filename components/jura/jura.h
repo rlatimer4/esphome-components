@@ -74,46 +74,41 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
     }
     
     if (result.length() >= 39) {
-      try {
-        // Parse counter data with bounds checking
-        long num_single_espresso = 0, num_double_espresso = 0;
-        long num_coffee = 0, num_double_coffee = 0, num_clean = 0;
-        
-        if (result.length() > 7) {
-          num_single_espresso = strtol(result.substr(3,4).c_str(), nullptr, 16);
-          num_double_espresso = strtol(result.substr(7,4).c_str(), nullptr, 16);
-        }
-        if (result.length() > 19) {
-          num_coffee = strtol(result.substr(11,4).c_str(), nullptr, 16);
-          num_double_coffee = strtol(result.substr(15,4).c_str(), nullptr, 16);
-        }
-        if (result.length() > 39) {
-          num_clean = strtol(result.substr(35,4).c_str(), nullptr, 16);
-        }
-
-        // Publish to sensors with validation
-        if (this->single_espresso_sensor_ && num_single_espresso >= 0) {
-          this->single_espresso_sensor_->publish_state(num_single_espresso);
-        }
-        if (this->double_espresso_sensor_ && num_double_espresso >= 0) {
-          this->double_espresso_sensor_->publish_state(num_double_espresso);
-        }
-        if (this->coffee_sensor_ && num_coffee >= 0) {
-          this->coffee_sensor_->publish_state(num_coffee);
-        }
-        if (this->double_coffee_sensor_ && num_double_coffee >= 0) {
-          this->double_coffee_sensor_->publish_state(num_double_coffee);
-        }
-        if (this->cleanings_sensor_ && num_clean >= 0) {
-          this->cleanings_sensor_->publish_state(num_clean);
-        }
-        
-        ESP_LOGD(TAG, "Coffee counters - Single: %ld, Double: %ld, Coffee: %ld, Double Coffee: %ld, Clean: %ld", 
-                 num_single_espresso, num_double_espresso, num_coffee, num_double_coffee, num_clean);
-                 
-      } catch (const std::exception& e) {
-        ESP_LOGW(TAG, "Error parsing counter data: %s", e.what());
+      // Parse counter data with bounds checking
+      long num_single_espresso = 0, num_double_espresso = 0;
+      long num_coffee = 0, num_double_coffee = 0, num_clean = 0;
+      
+      if (result.length() > 7) {
+        num_single_espresso = strtol(result.substr(3,4).c_str(), nullptr, 16);
+        num_double_espresso = strtol(result.substr(7,4).c_str(), nullptr, 16);
       }
+      if (result.length() > 19) {
+        num_coffee = strtol(result.substr(11,4).c_str(), nullptr, 16);
+        num_double_coffee = strtol(result.substr(15,4).c_str(), nullptr, 16);
+      }
+      if (result.length() > 39) {
+        num_clean = strtol(result.substr(35,4).c_str(), nullptr, 16);
+      }
+
+      // Publish to sensors with validation
+      if (this->single_espresso_sensor_ && num_single_espresso >= 0) {
+        this->single_espresso_sensor_->publish_state(num_single_espresso);
+      }
+      if (this->double_espresso_sensor_ && num_double_espresso >= 0) {
+        this->double_espresso_sensor_->publish_state(num_double_espresso);
+      }
+      if (this->coffee_sensor_ && num_coffee >= 0) {
+        this->coffee_sensor_->publish_state(num_coffee);
+      }
+      if (this->double_coffee_sensor_ && num_double_coffee >= 0) {
+        this->double_coffee_sensor_->publish_state(num_double_coffee);
+      }
+      if (this->cleanings_sensor_ && num_clean >= 0) {
+        this->cleanings_sensor_->publish_state(num_clean);
+      }
+      
+      ESP_LOGD(TAG, "Coffee counters - Single: %ld, Double: %ld, Coffee: %ld, Double Coffee: %ld, Clean: %ld", 
+               num_single_espresso, num_double_espresso, num_coffee, num_double_coffee, num_clean);
     } else {
       ESP_LOGW(TAG, "Counter response too short: %zu chars (expected >= 39)", result.length());
     }
