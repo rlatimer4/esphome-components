@@ -12,7 +12,7 @@ namespace jura {
 
 static const char *const TAG = "jura";
 
-// Helper functions from your original code
+// Helper functions from the original ryanalden component
 static bool endsWith(const std::string& str, const std::string& suffix) {
     return str.size() >= suffix.size() && 0 == str.compare(str.size()-suffix.size(), suffix.size(), suffix);
 }
@@ -24,7 +24,7 @@ static bool endsWith(const std::string& str, const std::string& suffix) {
 
 class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
  public:
-  // EXACTLY like original - no timeout setter
+  // Exactly like the original template sensors approach
   void set_single_espresso_sensor(sensor::Sensor *s) { this->single_espresso_sensor_ = s; }
   void set_double_espresso_sensor(sensor::Sensor *s) { this->double_espresso_sensor_ = s; }
   void set_coffee_sensor(sensor::Sensor *s) { this->coffee_sensor_ = s; }
@@ -34,29 +34,25 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
   void set_tank_status_sensor(text_sensor::TextSensor *s) { this->tank_status_sensor_ = s; }
 
   void setup() override {
-    // EXACTLY like original
     ESP_LOGCONFIG(TAG, "Setting up Jura Coffee Machine component...");
   }
 
   void update() override {
     ESP_LOGD(TAG, "Polling Jura Coffee Machine for data...");
-    std::string result;
-
-    // --- Fetch and parse counter data ---
-    result = cmd2jura("RT:0000");
-    // ONLY CHANGE: Add bounds checking (original had none)
-    if (result.length() < 39) { 
-        ESP_LOGW(TAG, "Failed to get counter data or response was too short. Received: %s", result.c_str());
-    } else {
-        ESP_LOGD(TAG, "Received counter data: %s", result.c_str());
-        // Original parsing - EXACTLY the same
+    
+    // Get counter data - exactly like original but adapted for external component
+    std::string result = cmd2jura("RT:0000");
+    ESP_LOGD(TAG, "Received counter data: %s", result.c_str());
+    
+    if (result.length() >= 39) {
+        // Parse exactly like the original ryanalden component
         long num_single_espresso = strtol(result.substr(3,4).c_str(), nullptr, 16);
         long num_double_espresso = strtol(result.substr(7,4).c_str(), nullptr, 16);
         long num_coffee = strtol(result.substr(11,4).c_str(), nullptr, 16);
         long num_double_coffee = strtol(result.substr(15,4).c_str(), nullptr, 16);
         long num_clean = strtol(result.substr(35,4).c_str(), nullptr, 16);
 
-        // Original publishing - EXACTLY the same
+        // Publish to sensors if they exist
         if (this->single_espresso_sensor_ != nullptr) this->single_espresso_sensor_->publish_state(num_single_espresso);
         if (this->double_espresso_sensor_ != nullptr) this->double_espresso_sensor_->publish_state(num_double_espresso);
         if (this->coffee_sensor_ != nullptr) this->coffee_sensor_->publish_state(num_coffee);
@@ -64,14 +60,12 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
         if (this->cleanings_sensor_ != nullptr) this->cleanings_sensor_->publish_state(num_clean);
     }
 
-    // --- Fetch and parse status data ---
+    // Get status data - exactly like original but adapted for external component  
     result = cmd2jura("IC:");
-    // ONLY CHANGE: Add bounds checking (original had none)
-    if (result.length() < 5) { 
-        ESP_LOGW(TAG, "Failed to get status data or response was too short. Received: %s", result.c_str());
-    } else {
-        ESP_LOGD(TAG, "Received status data: %s", result.c_str());
-        // Original parsing - EXACTLY the same
+    ESP_LOGD(TAG, "Received status data: %s", result.c_str());
+    
+    if (result.length() >= 5) {
+        // Parse exactly like the original ryanalden component
         uint8_t hex_to_byte = strtol(result.substr(3,2).c_str(), nullptr, 16);
         int trayBit = bitRead(hex_to_byte, 4);
         int tankBit = bitRead(hex_to_byte, 5);
@@ -84,7 +78,7 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
   }
 
  protected:
-  // EXACTLY like original - no timeout changes
+  // cmd2jura function - EXACTLY like the original ryanalden component
   std::string cmd2jura(std::string outbytes) {
     std::string inbytes;
     int w = 0;
@@ -118,14 +112,14 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
       } else {
         delay(10);
       }
-      if (w++ > 500) { // Original hardcoded timeout
+      if (w++ > 500) { // Original timeout
         return "";
       }
     }
     return inbytes.substr(0, inbytes.length() - 2);
   }
 
-  // EXACTLY like original - no timeout variable
+  // Sensor pointers - exactly like template sensors in original
   sensor::Sensor *single_espresso_sensor_{nullptr};
   sensor::Sensor *double_espresso_sensor_{nullptr};
   sensor::Sensor *coffee_sensor_{nullptr};
