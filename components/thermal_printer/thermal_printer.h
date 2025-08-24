@@ -177,6 +177,9 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   void write_bytes(uint8_t a, uint8_t b);
   void write_bytes(uint8_t a, uint8_t b, uint8_t c);
   void write_bytes(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
+  
+  // For QR codes and complex commands, use individual write_byte calls
+  // instead of trying to extend write_bytes with more parameters
 };
 
 }  // namespace thermal_printer
