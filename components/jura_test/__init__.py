@@ -7,7 +7,7 @@ from esphome.const import CONF_ID
 jura_test_ns = cg.esphome_ns.namespace("jura_test")
 JuraCoffeeComponent = jura_test_ns.class_("JuraCoffeeComponent", cg.PollingComponent, uart.UARTDevice)
 
-# Minimal configuration schema - no sensors, just testing communication and parsing
+# Configuration schema - all sensors optional, no validation required
 CONFIG_SCHEMA = (
     cv.Schema(
         {
@@ -18,7 +18,7 @@ CONFIG_SCHEMA = (
     .extend(uart.UART_DEVICE_SCHEMA)
 )
 
-# Minimal code generation
+# Code generation - no sensors for now
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
