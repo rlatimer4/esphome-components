@@ -3,6 +3,7 @@ import esphome.config_validation as cv
 from esphome.components import sensor, text_sensor, uart
 from esphome.const import (
     CONF_ID,
+    CONF_TIMEOUT,
     ICON_COUNTER,
     UNIT_EMPTY,
 )
@@ -11,20 +12,20 @@ from esphome.const import (
 jura_ns = cg.esphome_ns.namespace("jura")
 JuraCoffeeComponent = jura_ns.class_("JuraCoffeeComponent", cg.PollingComponent, uart.UARTDevice)
 
-# Configuration keys - exactly like the original
+# Configuration keys - updated for your specific model
 CONF_SINGLE_ESPRESSO = "single_espresso"
 CONF_DOUBLE_ESPRESSO = "double_espresso"
 CONF_COFFEE = "coffee"
 CONF_DOUBLE_COFFEE = "double_coffee"
 CONF_CLEANINGS = "cleanings"
-CONF_TRAY_STATUS = "tray_status"
-CONF_TANK_STATUS = "tank_status"
+CONF_TIMEOUT_MS = "timeout_ms"
 
-# Simple configuration schema - no validation
+# Configuration schema with timeout support
 CONFIG_SCHEMA = (
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(JuraCoffeeComponent),
+            cv.Optional(CONF_TIMEOUT_MS, default=5000): cv.int_range(min=1000, max=30000),
             cv.Optional(CONF_SINGLE_ESPRESSO): sensor.sensor_schema(
                 unit_of_measurement=UNIT_EMPTY,
                 icon=ICON_COUNTER,
@@ -50,21 +51,31 @@ CONFIG_SCHEMA = (
                 icon="mdi:spray-bottle",
                 accuracy_decimals=0,
             ),
-            cv.Optional(CONF_TRAY_STATUS): text_sensor.text_sensor_schema(),
-            cv.Optional(CONF_TANK_STATUS): text_sensor.text_sensor_schema(),
         }
     )
     .extend(cv.polling_component_schema("60s"))
     .extend(uart.UART_DEVICE_SCHEMA)
 )
 
-# Code generation - simplified from original template approach
+# Code generation
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
 
-    # Set up sensors if configured - like the original template sensors
+    # Set timeout
+    cg.add(var.set_timeout_ms(config[CONF_TIMEOUT_MS]))
+
+    # Validate at least one sensor is configured
+    has_sensor = any(key in config for key in [
+        CONF_SINGLE_ESPRESSO, CONF_DOUBLE_ESPRESSO, CONF_COFFEE, 
+        CONF_DOUBLE_COFFEE, CONF_CLEANINGS
+    ])
+    
+    if not has_sensor:
+        cg.add_build_flag("-DJURA_NO_SENSORS_WARNING")
+
+    # Set up sensors if configured
     if CONF_SINGLE_ESPRESSO in config:
         sens = await sensor.new_sensor(config[CONF_SINGLE_ESPRESSO])
         cg.add(var.set_single_espresso_sensor(sens))
@@ -84,11 +95,3 @@ async def to_code(config):
     if CONF_CLEANINGS in config:
         sens = await sensor.new_sensor(config[CONF_CLEANINGS])
         cg.add(var.set_cleanings_sensor(sens))
-
-    if CONF_TRAY_STATUS in config:
-        sens = await text_sensor.new_text_sensor(config[CONF_TRAY_STATUS])
-        cg.add(var.set_tray_status_sensor(sens))
-
-    if CONF_TANK_STATUS in config:
-        sens = await text_sensor.new_text_sensor(config[CONF_TANK_STATUS])
-        cg.add(var.set_tank_status_sensor(sens))
