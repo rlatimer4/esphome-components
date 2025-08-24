@@ -604,7 +604,7 @@ void ThermalPrinterComponent::print_rotated_text(const char* text, uint8_t rotat
   ESP_LOGI(TAG, "Printed rotated text: %d degrees", rotation * 90);
 }
 
-// QR Code Generation
+// QR Code Generation - Fixed to use individual write_byte calls
 void ThermalPrinterComponent::print_qr_code(const char* data, uint8_t size, uint8_t error_correction) {
   if (!data || strlen(data) == 0) {
     ESP_LOGW(TAG, "Empty data provided for QR code");
@@ -620,23 +620,52 @@ void ThermalPrinterComponent::print_qr_code(const char* data, uint8_t size, uint
   
   // QR Code Model 2 commands for thermal printers
   // Set QR code size (1-16, where 3 is medium)
-  this->write_bytes(ASCII_GS, '(', 'k', 4, 0, 49, 65, size, 0);
+  this->write_byte(ASCII_GS);
+  this->write_byte('(');
+  this->write_byte('k');
+  this->write_byte(4);
+  this->write_byte(0);
+  this->write_byte(49);
+  this->write_byte(65);
+  this->write_byte(size);
+  this->write_byte(0);
   delay(10);
   
   // Set error correction level (0-3: Low, Medium, Quartile, High)
-  this->write_bytes(ASCII_GS, '(', 'k', 3, 0, 49, 67, error_correction);
+  this->write_byte(ASCII_GS);
+  this->write_byte('(');
+  this->write_byte('k');
+  this->write_byte(3);
+  this->write_byte(0);
+  this->write_byte(49);
+  this->write_byte(67);
+  this->write_byte(error_correction);
   delay(10);
   
   // Store QR code data
   uint16_t data_len = strlen(data);
   uint16_t total_len = data_len + 3;
   
-  this->write_bytes(ASCII_GS, '(', 'k', total_len & 0xFF, (total_len >> 8) & 0xFF, 49, 80, 48);
+  this->write_byte(ASCII_GS);
+  this->write_byte('(');
+  this->write_byte('k');
+  this->write_byte(total_len & 0xFF);
+  this->write_byte((total_len >> 8) & 0xFF);
+  this->write_byte(49);
+  this->write_byte(80);
+  this->write_byte(48);
   this->print(data);
   delay(50);
   
   // Print QR code
-  this->write_bytes(ASCII_GS, '(', 'k', 3, 0, 49, 81, 48);
+  this->write_byte(ASCII_GS);
+  this->write_byte('(');
+  this->write_byte('k');
+  this->write_byte(3);
+  this->write_byte(0);
+  this->write_byte(49);
+  this->write_byte(81);
+  this->write_byte(48);
   delay(300); // QR codes need more processing time
   
   this->feed(2); // Add spacing after QR code
