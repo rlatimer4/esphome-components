@@ -10,6 +10,17 @@ AUTO_LOAD = ["text_sensor", "binary_sensor"]
 thermal_printer_ns = cg.esphome_ns.namespace("thermal_printer")
 ThermalPrinterComponent = thermal_printer_ns.class_("ThermalPrinterComponent", cg.Component, uart.UARTDevice)
 
+# Phase 1: Expose the enum to ESPHome
+PrintResult = thermal_printer_ns.enum("PrintResult")
+PrintResultEnum = {
+    "SUCCESS": PrintResult.SUCCESS,
+    "PAPER_OUT": PrintResult.PAPER_OUT,
+    "COVER_OPEN": PrintResult.COVER_OPEN,
+    "COMMUNICATION_ERROR": PrintResult.COMMUNICATION_ERROR,
+    "INSUFFICIENT_PAPER": PrintResult.INSUFFICIENT_PAPER,
+    "PRINTER_OFFLINE": PrintResult.PRINTER_OFFLINE,
+}
+
 # Configuration constants
 CONF_THERMAL_PRINTER_ID = "thermal_printer_id"
 CONF_PAPER_WIDTH = "paper_width"
