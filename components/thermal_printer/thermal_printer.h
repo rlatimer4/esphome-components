@@ -88,7 +88,7 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
 
   // ESPHome specific methods
   void print_text(const char *text);
-  void print_two_column(const char *left_text, const char *right_text, bool fill_dots = true);
+  void print_two_column(const char *left_text, const char *right_text, bool fill_dots = true, char text_size = 'S');
   void print_table_row(const char *col1, const char *col2, const char *col3 = nullptr);
   bool has_paper();
   void set_paper_check_callback(std::function<void(bool)> &&callback);
@@ -100,6 +100,7 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   uint32_t get_lines_printed();
   uint32_t get_characters_printed();
   void set_paper_roll_length(float length_mm); // Default 30000mm (30m)
+  void set_line_height_calibration(float mm_per_line);
 
  protected:
   uint32_t last_paper_check_{0};
@@ -111,7 +112,7 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   uint32_t characters_printed_{0};
   uint32_t feeds_executed_{0};
   float paper_roll_length_{30000.0}; // 30 meters in mm
-  float line_height_mm_{0.125}; // ~0.125mm per line for thermal paper
+  float line_height_mm_{4.0}; // ~4.0mm per line for thermal paper (more realistic)
 
   // Helper methods for paper tracking
   void track_print_operation(uint16_t chars, uint8_t lines = 0, uint8_t feeds = 0);
