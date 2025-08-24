@@ -294,8 +294,19 @@ void ThermalPrinterComponent::print_text(const char *text) {
   this->track_print_operation(len, newlines, 0);
 }
 
-void ThermalPrinterComponent::print_two_column(const char *left_text, const char *right_text, bool fill_dots) {
-  const uint8_t line_width = 32; // Characters per line for normal text
+void ThermalPrinterComponent::print_two_column(const char *left_text, const char *right_text, bool fill_dots, char text_size) {
+  // Set text size first
+  this->set_size(text_size);
+  
+  // Determine line width based on text size
+  uint8_t line_width;
+  switch (text_size) {
+    case 'L': line_width = 16; break;  // Large text: 16 chars per line
+    case 'M': line_width = 24; break;  // Medium text: 24 chars per line  
+    case 'S':
+    default:  line_width = 32; break;  // Small text: 32 chars per line
+  }
+  
   char pad_char = fill_dots ? '.' : ' ';
   
   // Split text into lines
@@ -303,14 +314,16 @@ void ThermalPrinterComponent::print_two_column(const char *left_text, const char
   std::string right(right_text);
   
   size_t left_pos = 0, right_pos = 0;
+  uint8_t max_left_chars = (line_width - 2) / 2;  // Leave space for right side
+  uint8_t max_right_chars = line_width - max_left_chars - 1; // Remaining space
   
   while (left_pos < left.length() || right_pos < right.length()) {
-    // Extract left column text (max 15 chars to leave room for right side)
+    // Extract left column text
     std::string left_line;
     size_t left_end = left_pos;
     uint8_t left_chars = 0;
     
-    while (left_end < left.length() && left_chars < 15) {
+    while (left_end < left.length() && left_chars < max_left_chars) {
       if (left[left_end] == '\n') {
         break;
       }
@@ -324,12 +337,12 @@ void ThermalPrinterComponent::print_two_column(const char *left_text, const char
     }
     left_pos = left_end;
     
-    // Extract right column text (max 15 chars)
+    // Extract right column text
     std::string right_line;
     size_t right_end = right_pos;
     uint8_t right_chars = 0;
     
-    while (right_end < right.length() && right_chars < 15) {
+    while (right_end < right.length() && right_chars < max_right_chars) {
       if (right[right_end] == '\n') {
         break;
       }
@@ -346,6 +359,9 @@ void ThermalPrinterComponent::print_two_column(const char *left_text, const char
     // Print the padded line
     this->print_padded_line(left_line.c_str(), right_line.c_str(), line_width, pad_char);
   }
+  
+  // Reset to normal size
+  this->set_size('S');
 }
 
 void ThermalPrinterComponent::print_table_row(const char *col1, const char *col2, const char *col3) {
@@ -407,6 +423,11 @@ uint32_t ThermalPrinterComponent::get_characters_printed() {
 void ThermalPrinterComponent::set_paper_roll_length(float length_mm) {
   this->paper_roll_length_ = length_mm;
   ESP_LOGI(TAG, "Paper roll length set to %.0f mm", length_mm);
+}
+
+void ThermalPrinterComponent::set_line_height_calibration(float mm_per_line) {
+  this->line_height_mm_ = mm_per_line;
+  ESP_LOGI(TAG, "Line height calibration set to %.2f mm/line", mm_per_line);
 }
 
 void ThermalPrinterComponent::set_paper_check_callback(std::function<void(bool)> &&callback) {
