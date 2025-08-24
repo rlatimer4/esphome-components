@@ -24,75 +24,71 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
  public:
 
   void setup() override {
-    ESP_LOGCONFIG(TAG, "Setting up Jura Test component for detailed debugging...");
+    ESP_LOGCONFIG(TAG, "Setting up Jura Test component...");
+    ESP_LOGCONFIG(TAG, "This version tests data parsing without sensors");
   }
 
   void update() override {
-    ESP_LOGI(TAG, "=== Starting Jura Communication Test ===");
+    ESP_LOGI(TAG, "Testing Jura communication with parsing...");
     
-    // Test 1: Counter data with detailed parsing
-    ESP_LOGI(TAG, "Test 1: Requesting counter data (RT:0000)...");
+    // Test counter data parsing (like the original component)
     std::string result = cmd2jura("RT:0000");
     
     if (result.length() >= 39) {
-        ESP_LOGI(TAG, "✓ Counter data SUCCESS (%d chars): %s", result.length(), result.c_str());
+        ESP_LOGI(TAG, "Counter data received (%d chars): %s", result.length(), result.c_str());
         
-        // Parse and log each value
+        // Parse exactly like the original enhanced component
         long num_single_espresso = strtol(result.substr(3,4).c_str(), nullptr, 16);
         long num_double_espresso = strtol(result.substr(7,4).c_str(), nullptr, 16);
         long num_coffee = strtol(result.substr(11,4).c_str(), nullptr, 16);
         long num_double_coffee = strtol(result.substr(15,4).c_str(), nullptr, 16);
         long num_clean = strtol(result.substr(35,4).c_str(), nullptr, 16);
-        
-        ESP_LOGI(TAG, "  Single Espresso: %ld", num_single_espresso);
-        ESP_LOGI(TAG, "  Double Espresso: %ld", num_double_espresso);
-        ESP_LOGI(TAG, "  Coffee: %ld", num_coffee);
-        ESP_LOGI(TAG, "  Double Coffee: %ld", num_double_coffee);
-        ESP_LOGI(TAG, "  Cleanings: %ld", num_clean);
-        
+
+        ESP_LOGI(TAG, "Parsed counters - Single: %ld, Double: %ld, Coffee: %ld, Double Coffee: %ld, Cleanings: %ld", 
+                 num_single_espresso, num_double_espresso, num_coffee, num_double_coffee, num_clean);
     } else {
-        ESP_LOGW(TAG, "✗ Counter data FAILED - too short (%d chars): '%s'", result.length(), result.c_str());
+        ESP_LOGW(TAG, "Counter data too short (%d chars): %s", result.length(), result.c_str());
     }
-    
-    // Small delay between commands
-    delay(100);
-    
-    // Test 2: Status data with detailed parsing  
-    ESP_LOGI(TAG, "Test 2: Requesting status data (IC:)...");
+
+    // Test status data parsing (like the original component)
     result = cmd2jura("IC:");
     
     if (result.length() >= 5) {
-        ESP_LOGI(TAG, "✓ Status data SUCCESS (%d chars): %s", result.length(), result.c_str());
+        ESP_LOGI(TAG, "Status data received (%d chars): %s", result.length(), result.c_str());
         
-        // Parse status byte
+        // Parse exactly like the original enhanced component  
         uint8_t hex_to_byte = strtol(result.substr(3,2).c_str(), nullptr, 16);
         int trayBit = bitRead(hex_to_byte, 4);
         int tankBit = bitRead(hex_to_byte, 5);
         
-        ESP_LOGI(TAG, "  Status byte: 0x%02X", hex_to_byte);
-        ESP_LOGI(TAG, "  Tray bit (4): %d -> %s", trayBit, (trayBit == 1) ? "Not Fitted" : "OK");
-        ESP_LOGI(TAG, "  Tank bit (5): %d -> %s", tankBit, (tankBit == 1) ? "Fill Tank" : "OK");
+        ESP_LOGI(TAG, "Status byte: 0x%02X, tray bit: %d, tank bit: %d", hex_to_byte, trayBit, tankBit);
         
+        std::string tray_status = (trayBit == 1) ? "Not Fitted" : "OK";
+        std::string tank_status = (tankBit == 1) ? "Fill Tank" : "OK";
+
+        ESP_LOGI(TAG, "Status - Tray: %s, Tank: %s", tray_status.c_str(), tank_status.c_str());
     } else {
-        ESP_LOGW(TAG, "✗ Status data FAILED - too short (%d chars): '%s'", result.length(), result.c_str());
+        ESP_LOGW(TAG, "Status data too short (%d chars): %s", result.length(), result.c_str());
     }
-    
-    ESP_LOGI(TAG, "=== Communication Test Complete ===");
   }
 
  protected:
+  // Use configurable timeout like the enhanced version
   std::string cmd2jura(std::string outbytes) {
     std::string inbytes;
-    int w = 0;
+    uint32_t timeout_loops = 500; // 5 seconds like enhanced version
+    uint32_t w = 0;
 
-    ESP_LOGD(TAG, "Sending command: '%s'", outbytes.c_str());
+    ESP_LOGV(TAG, "Sending command: %s", outbytes.c_str());
 
-    // Clear receive buffer
+    // Clear any pending data in the receive buffer
     while (available()) {
       read();
     }
 
     outbytes += "\r\n";
+    
+    // Send command byte by byte with Jura encoding
     for (int i = 0; i < outbytes.length(); i++) {
       for (int s = 0; s < 8; s += 2) {
         uint8_t rawbyte = 255;
@@ -103,6 +99,7 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
       delay(8);
     }
 
+    // Read response with Jura decoding
     int s = 0;
     uint8_t inbyte = 0;
     while (!endsWith(inbytes, "\r\n")) {
@@ -117,16 +114,18 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
       } else {
         delay(10);
       }
-      if (w++ > 500) { // 5 second timeout
-        ESP_LOGW(TAG, "Timeout after ~5 seconds, partial response: '%s'", inbytes.c_str());
+      if (w++ > timeout_loops) {
+        ESP_LOGW(TAG, "Timeout waiting for response after ~5 seconds. Partial response: '%s'", inbytes.c_str());
         return "";
       }
     }
     
     std::string response = inbytes.substr(0, inbytes.length() - 2);
-    ESP_LOGD(TAG, "Received response: '%s'", response.c_str());
+    ESP_LOGV(TAG, "Received response: %s", response.c_str());
     return response;
   }
+
+};
 };
 
 }  // namespace jura_test
