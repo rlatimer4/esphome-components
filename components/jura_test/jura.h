@@ -128,7 +128,3 @@ class JuraCoffeeComponent : public PollingComponent, public uart::UARTDevice {
 
 }  // namespace jura_test
 }  // namespace esphome
-};
-
-}  // namespace jura_test
-}  // namespace esphome
