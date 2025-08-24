@@ -456,7 +456,7 @@ sensor:
     unit_of_measurement: "s"
     lambda: |-
       if (id(is_brewing) && id(brew_start_time) > 0) {
-        return (float)(millis() - id(brew_start_time) / 1000.0);
+        return (float)(millis() - id(brew_start_time)) / 1000.0;
       }
       return 0.0;
     update_interval: 1s
