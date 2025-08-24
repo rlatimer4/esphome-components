@@ -1,31 +1,43 @@
-# ESPHome Jura Coffee Machine Component
+# ESPHome Jura Coffee Machine Component v2.0
 
-A modern ESPHome external component for integrating Jura coffee machines with Home Assistant. This component allows you to monitor coffee consumption statistics, tank/tray status, and control your Jura coffee machine remotely.
+A comprehensive ESPHome external component for integrating Jura coffee machines with Home Assistant, featuring optimistic screen tracking and a custom Lovelace control card.
+
+## 🆕 What's New in v2.0
+
+- **Optimistic Screen Tracking**: ESP32 tracks current screen state without tank/tray sensors
+- **Context-Aware Buttons**: Button functions change based on current screen and brewing state
+- **Brewing State Management**: Tracks strength/volume adjustment phases during brewing
+- **Custom Lovelace Card**: Beautiful, responsive control interface for Home Assistant
+- **Enhanced Error Handling**: Improved timeout handling and bounds checking
+- **Model-Specific Adaptations**: Tailored for models without working tank/tray status
 
 ## Features
 
-- 📊 **Coffee Statistics**: Track single espresso, double espresso, coffee, and double coffee counts
-- 🧽 **Maintenance Tracking**: Monitor cleaning cycles performed
-- 💧 **Status Monitoring**: Water tank and drip tray status detection
-- 🎛️ **Remote Control**: Virtual buttons for machine operation
-- 🏠 **Home Assistant Integration**: Seamlessly integrates as native HA entities
-- ⚙️ **Configurable**: Flexible sensor configuration and timeout settings
+- 📊 **Coffee Statistics**: Track espresso, coffee, and cleaning counts
+- 🎯 **Smart Screen Tracking**: Optimistic tracking of current display screen
+- 🎛️ **Context-Aware Controls**: Button functions adapt to current screen
+- ⏱️ **Brewing Management**: Handles strength and volume adjustment phases
+- 🏠 **Home Assistant Integration**: Custom Lovelace card for beautiful control
+- ⚙️ **Configurable Timeouts**: Adjustable communication settings
 - 🔧 **Modern Architecture**: Uses ESPHome's latest external components system
 
 ## Compatible Devices
 
-This component has been tested with various Jura coffee machines including:
-- Jura E8
-- Jura Z10
-- Jura S8
-- Other Jura models with serial interface support
+This component works with Jura coffee machines that have:
+- Serial interface support (4-pin service connector)
+- 6-button display layout (3 buttons per side)
+- Standard Jura communication protocol
 
-> **Note**: Your Jura machine must have a service port (usually a 4-pin connector) for UART communication.
+**Tested Models:**
+- Jura E8 (original test model)
+- Jura Z10 
+- Jura S8
+- Other models with similar button layouts
 
 ## Hardware Requirements
 
 - ESP32 development board
-- TTL to RS232 converter (or direct connection if your Jura uses TTL levels)
+- TTL to RS232 converter (if needed)
 - Jura service cable or custom connector
 - Optional: Status LED on GPIO2
 
@@ -33,12 +45,8 @@ This component has been tested with various Jura coffee machines including:
 
 ### Step 1: Download the Component
 
-1. Create a `jura` folder in your ESPHome configuration directory
-2. Download and place these files in the `jura` folder:
-   - `__init__.py`
-   - `jura.h`
+Create a `jura` folder in your ESPHome configuration directory and add these files:
 
-Your directory structure should look like:
 ```
 your_esphome_config/
 ├── your_device.yaml
@@ -51,146 +59,140 @@ your_esphome_config/
 
 Connect your ESP32 to the Jura machine:
 - ESP32 GPIO17 (TX) → Jura RX
-- ESP32 GPIO16 (RX) → Jura TX
+- ESP32 GPIO16 (RX) → Jura TX  
 - Ground connection between ESP32 and Jura
 - Power the ESP32 via USB or external supply
 
 ### Step 3: ESPHome Configuration
 
-Create or modify your ESPHome YAML configuration:
+Use the provided `jura_coffee.yaml` as your configuration template. Key features:
 
 ```yaml
-substitutions:
-  devicename: jura_coffee
-  friendly_name: Coffee Machine
-  device_description: Jura Coffee Machine in Kitchen
-
-# Basic ESPHome configuration
-esphome:
-  name: ${devicename}
-
-esp32:
-  board: esp32dev
-  framework:
-    type: esp-idf
-
-# WiFi and API setup
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-
-api:
-  encryption:
-    key: !secret api_key
-
-ota:
-  - platform: esphome
-    password: !secret ota_password
-
-logger:
-
-# External component configuration
+# External component
 external_components:
   - source:
       type: local
       path: jura
 
-# UART configuration for Jura communication
-uart:
-  tx_pin: GPIO17
-  rx_pin: GPIO16
-  baud_rate: 9600
-  id: uart_bus
-
-# Jura component configuration
+# Enhanced Jura component
 jura:
   uart_id: uart_bus
   update_interval: 60s
-  timeout_ms: 5000  # Optional: communication timeout in milliseconds
+  timeout_ms: 5000  # Configurable timeout
   
-  # Configure the sensors you want (all optional)
+  # Only sensors that work (no tank/tray status)
   single_espresso:
-    id: num_single_espresso
     name: "Single Espressos Made"
-  double_espresso:
-    id: num_double_espresso
-    name: "Double Espressos Made"
-  coffee:
-    id: num_coffee
-    name: "Coffees Made"
-  double_coffee:
-    id: num_double_coffee
-    name: "Double Coffees Made"
-  cleanings:
-    id: num_clean
-    name: "Cleanings Performed"
-  tray_status:
-    id: tray_status
-    name: "Drip Tray Status"
-  tank_status:
-    id: tank_status
-    name: "Water Tank Status"
+  # ... other sensors
 ```
+
+### Step 4: Custom Lovelace Card Installation
+
+1. **Download the card file**: Save `jura-coffee-card.js` to your Home Assistant `www` folder:
+   ```
+   /config/www/jura-coffee-card.js
+   ```
+
+2. **Register the card**: Add to your `configuration.yaml`:
+   ```yaml
+   lovelace:
+     mode: yaml
+     resources:
+       - url: /local/jura-coffee-card.js
+         type: module
+   ```
+
+3. **Add to dashboard**: Use the provided Lovelace configuration or add via UI:
+   ```yaml
+   type: custom:jura-coffee-card
+   entities:
+     power: switch.coffee_machine_power
+     current_screen: text_sensor.current_screen
+     is_brewing: binary_sensor.is_brewing
+     # ... see full config
+   ```
+
+## Screen Layout Understanding
+
+Your Jura machine has two coffee screens and five menu screens:
+
+### Coffee Screens
+**Screen 1:**
+```
+Espresso    | Coffee
+Ristretto   | Hot Water  
+Menu        | Next
+```
+
+**Screen 2:**
+```
+Cappuccino  | Flat White
+Latte Mac.  | 1P Milk
+Menu        | Next
+```
+
+### Menu Screens (1-5)
+Navigate through cleaning, maintenance, settings, and configuration options.
+
+## Button Behavior
+
+- **During Brewing** (first 4 seconds): Middle buttons control strength
+- **During Brewing** (next 10 seconds): Middle buttons control volume
+- **During Brewing**: Bottom left cancels brew
+- **Normal Operation**: Buttons follow screen layout
 
 ## Configuration Options
 
-### Component Configuration
+### Jura Component
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `uart_id` | string | required | ID of the UART component to use |
-| `update_interval` | time | `60s` | How often to poll the machine |
-| `timeout_ms` | int | `5000` | Communication timeout in milliseconds |
+| `uart_id` | string | required | UART component ID |
+| `update_interval` | time | `60s` | Polling frequency |
+| `timeout_ms` | int | `5000` | Communication timeout |
 
 ### Available Sensors
 
-| Sensor | Type | Description | Icon |
-|--------|------|-------------|------|
-| `single_espresso` | sensor | Count of single espressos made | `mdi:counter` |
-| `double_espresso` | sensor | Count of double espressos made | `mdi:counter` |
-| `coffee` | sensor | Count of regular coffees made | `mdi:counter` |
-| `double_coffee` | sensor | Count of double coffees made | `mdi:counter` |
-| `cleanings` | sensor | Number of cleaning cycles performed | `mdi:spray-bottle` |
-| `tray_status` | text_sensor | Drip tray status ("OK" or "Not Fitted") | `mdi:tray` |
-| `tank_status` | text_sensor | Water tank status ("OK" or "Fill Tank") | `mdi:cup-water` |
+| Sensor | Description | Works On Your Model |
+|--------|-------------|-------------------|
+| `single_espresso` | Single espresso count | ✅ Yes |
+| `double_espresso` | Double espresso count | ✅ Yes |
+| `coffee` | Regular coffee count | ✅ Yes |
+| `double_coffee` | Double coffee count | ✅ Yes |
+| `cleanings` | Cleaning cycles count | ✅ Yes |
+| `tray_status` | Drip tray status | ❌ Not working |
+| `tank_status` | Water tank status | ❌ Not working |
 
-### Minimal Configuration
+## Custom Card Features
 
-You can configure only the sensors you need:
-
-```yaml
-jura:
-  uart_id: uart_bus
-  single_espresso:
-    name: "Espresso Count"
-  tank_status:
-    name: "Water Tank"
-```
+- **Responsive Design**: Works on mobile and desktop
+- **Real-time Updates**: Reflects current machine state
+- **Context-Aware**: Button labels change based on screen
+- **Brewing Animation**: Visual feedback during operation
+- **Statistics Display**: Shows coffee consumption data
+- **Connection Status**: Indicates Home Assistant connectivity
 
 ## Troubleshooting
 
 ### Common Issues
 
-**1. No sensor data / all sensors show 0:**
-- Check UART wiring (TX/RX may be swapped)
+**No sensor data:**
+- Check UART wiring (TX/RX may be swapped)  
 - Verify baud rate is 9600
-- Check if your Jura model uses different commands
-- Enable verbose logging to see raw communication
+- Increase `timeout_ms` if needed
 
-**2. "Timeout waiting for response" errors:**
-- Increase `timeout_ms` value
-- Check physical connections
-- Ensure your Jura machine is powered on
-- Some machines may need different timing
+**Screen tracking incorrect:**
+- Check button press sequences match your model
+- Enable verbose logging to debug state changes
 
-**3. Incorrect sensor values:**
-- Different Jura models may use different response formats
-- Check the parsing positions in the code
-- Enable debug logging to see raw responses
+**Custom card not loading:**
+- Verify file is in `/config/www/` folder
+- Check browser console for JavaScript errors
+- Ensure resource is registered in configuration.yaml
 
 ### Debugging
 
-Enable detailed logging in your ESPHome configuration:
+Enable detailed logging:
 
 ```yaml
 logger:
@@ -199,136 +201,35 @@ logger:
     jura: VERBOSE
 ```
 
-This will show all communication between the ESP32 and your coffee machine.
+## Home Assistant Automations
 
-### Testing Communication
-
-You can test basic communication by sending raw UART commands:
-
-```yaml
-button:
-  - platform: template
-    name: "Test Communication"
-    on_press:
-      - uart.write: "RT:0000\r\n"
-```
-
-## Home Assistant Integration
-
-Once configured and connected, your coffee machine will appear in Home Assistant with:
-
-- **Sensors**: Coffee counters and status indicators
-- **Switches**: Machine power control
-- **Buttons**: Brew commands and navigation
-
-### Example Automations
-
-**Low water notification:**
+### Low Coffee Alert
 ```yaml
 automation:
-  - alias: "Coffee machine needs water"
+  - alias: "Daily coffee limit reached"
     trigger:
-      platform: state
-      entity_id: text_sensor.coffee_machine_water_tank_status
-      to: "Fill Tank"
+      platform: numeric_state
+      entity_id: sensor.total_coffees_made_today
+      above: 10
     action:
       service: notify.mobile_app
       data:
-        message: "Coffee machine water tank needs refilling!"
+        message: "Maybe switch to decaf? ☕"
 ```
 
-**Daily coffee consumption:**
+### Auto-power Off
 ```yaml
-template:
-  - sensor:
-      - name: "Today's Coffee Count"
-        state: >
-          {{ states('sensor.single_espressos_made')|int + 
-             states('sensor.double_espressos_made')|int + 
-             states('sensor.coffees_made')|int + 
-             states('sensor.double_coffees_made')|int }}
+automation:
+  - alias: "Coffee machine auto-off"
+    trigger:
+      platform: state
+      entity_id: binary_sensor.is_brewing
+      from: 'on'
+      to: 'off'
+      for: '02:00:00'
+    action:
+      service: switch.turn_off
+      entity_id: switch.coffee_machine_power
 ```
 
-## What's New in This Version
-
-### Improvements Made:
-
-1. **Enhanced Error Handling**
-   - Bounds checking before string operations
-   - Try-catch blocks around parsing logic
-   - Graceful handling of malformed responses
-
-2. **Configurable Timeouts**
-   - `timeout_ms` parameter instead of hardcoded values
-   - Adjustable for different Jura models and network conditions
-
-3. **Better Debugging**
-   - Verbose logging for communication debugging
-   - Enhanced error messages with context
-   - Configuration logging shows active sensors
-
-4. **Input Validation**
-   - Ensures at least one sensor is configured
-   - Prevents misconfigurations at compile time
-
-5. **Production Features**
-   - Better Home Assistant integration
-   - Template sensor for total coffee count
-   - Enhanced display logic with initialization states
-   - Fallback WiFi hotspot configuration
-
-## Advanced Configuration
-
-### Custom Display Logic
-
-The component includes globals for managing display state:
-
-```yaml
-globals:
-  - id: current_tab
-    type: int
-    restore_value: no
-    initial_value: '1'
-  - id: current_screen
-    type: std::string
-    restore_value: no
-    initial_value: '"Menu"'
-
-text_sensor:
-  - platform: template
-    id: display_current
-    name: "Current Display"
-    lambda: |-
-      std::string tank = id(tank_status).state;
-      std::string tray = id(tray_status).state;
-      if (tank != "OK") {
-        return {"Fill_Tank"}; 
-      } else if (tray != "OK") {
-        return {"Tray_Not_Fitted"};
-      } else {
-        return id(current_screen) + " " + std::to_string(id(current_tab));
-      }
-```
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Test with your Jura model
-2. Document any model-specific findings
-3. Submit pull requests with improvements
-4. Report issues with detailed logs
-
-## Credits
-
-- Original component by [ryanalden](https://github.com/ryanalden/esphome-jura-component)
-- Modernized for ESPHome external components architecture
-- Jura communication protocol reverse engineering by the community
-
-## License
-
-This project is licensed under the MIT License - see the original repository for details.
-
-## Disclaimer
-
-This component is not officially supported by Jura. Use at your own risk. Modifying your coffee machine may void the warranty.
+## Advance
