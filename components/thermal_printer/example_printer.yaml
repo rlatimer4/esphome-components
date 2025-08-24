@@ -48,10 +48,10 @@ uart:
 api:
   encryption:
     key: !secret api_encryption_key
-  
-  # Core working services for Phase 1
+ 
+  # Ultra-simple working services for Phase 1
   actions:
-    # Enhanced text printing with rotation support
+    # Basic enhanced text printing with rotation
     - action: print_text
       variables:
         message: string
@@ -60,35 +60,23 @@ api:
         bold: bool
         underline: bool
         inverse: bool
-        rotation: int  # 0=normal, 1=90°, 2=180°, 3=270°
+        rotation: int
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             
-            // Set text formatting
-            if (text_size == "S" || text_size == "small") {
-              printer->set_text_size(1);
-            } else if (text_size == "M" || text_size == "medium") {
-              printer->set_text_size(2);
-            } else if (text_size == "L" || text_size == "large") {
-              printer->set_text_size(3);
-            }
+            if (text_size == "S") printer->set_text_size(1);
+            else if (text_size == "M") printer->set_text_size(2);
+            else if (text_size == "L") printer->set_text_size(3);
             
-            // Set justification
-            if (alignment == "L" || alignment == "left") {
-              printer->justify('L');
-            } else if (alignment == "C" || alignment == "center") {
-              printer->justify('C');
-            } else if (alignment == "R" || alignment == "right") {
-              printer->justify('R');
-            }
+            if (alignment == "L") printer->justify('L');
+            else if (alignment == "C") printer->justify('C');
+            else if (alignment == "R") printer->justify('R');
             
-            // Set formatting
             printer->bold_on(bold);
             printer->underline_on(underline);
             printer->inverse_on(inverse);
             
-            // Handle rotation
             if (rotation > 0) {
               printer->print_rotated_text(message.c_str(), rotation);
             } else {
@@ -96,29 +84,28 @@ api:
               printer->println();
             }
             
-            // Reset formatting
             printer->bold_off();
             printer->underline_off();
             printer->inverse_off();
             printer->justify('L');
 
-    # 90-degree rotated text printing
+    # 90-degree rotated text - NEW Phase 1 Feature
     - action: print_rotated_text
       variables:
         message: string
-        rotation: int  # 1=90°, 2=180°, 3=270°
+        rotation: int
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             printer->print_rotated_text(message.c_str(), rotation);
 
-    # QR Code printing
+    # QR Code printing - NEW Phase 1 Feature  
     - action: print_qr_code
       variables:
         data: string
-        size: int  # 1-4 (small to extra large)
-        error_correction: int  # 0=Low, 1=Medium, 2=Quartile, 3=High
-        label: string  # Optional label above QR code
+        size: int
+        error_correction: int
+        label: string
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
@@ -141,13 +128,11 @@ api:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             char size_char = 'S';
-            if (text_size == "M" || text_size == "medium") size_char = 'M';
-            else if (text_size == "L" || text_size == "large") size_char = 'L';
-            
-            printer->print_two_column(left_text.c_str(), right_text.c_str(), 
-                                     fill_dots, size_char);
+            if (text_size == "M") size_char = 'M';
+            else if (text_size == "L") size_char = 'L';
+            printer->print_two_column(left_text.c_str(), right_text.c_str(), fill_dots, size_char);
 
-    # Simple receipt printing
+    # Simple template printing - NEW Phase 1 Feature
     - action: print_receipt
       variables:
         business_name: string
@@ -157,7 +142,6 @@ api:
             auto printer = id(my_thermal_printer);
             printer->print_simple_receipt(business_name.c_str(), total.c_str());
 
-    # Simple shopping list
     - action: print_shopping_list
       variables:
         items: string
@@ -166,23 +150,32 @@ api:
             auto printer = id(my_thermal_printer);
             printer->print_shopping_list(items.c_str());
 
-    # Safe printing with error checking
+    # Safe printing without enum complications
     - action: safe_print_text
       variables:
         message: string
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            auto result = printer->safe_print_text(message.c_str());
-            
-            // Log the result
-            if (result == PrintResult::SUCCESS) {
+            // Check paper before printing (simplified)
+            if (printer->has_paper()) {
+              printer->print_text(message.c_str());
               ESP_LOGI("thermal_printer", "Print successful");
             } else {
-              ESP_LOGW("thermal_printer", "Print failed - check paper/printer status");
+              ESP_LOGW("thermal_printer", "Cannot print - no paper");
             }
 
-    # Existing basic services
+    # Paper management check - NEW Phase 1 Feature
+    - action: check_can_print
+      variables:
+        estimated_lines: int
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            bool can_print = printer->can_print_job(estimated_lines);
+            ESP_LOGI("thermal_printer", "Can print %d lines: %s", estimated_lines, can_print ? "YES" : "NO");
+
+    # All original services preserved
     - action: print_barcode
       variables:
         barcode_type: int
@@ -232,16 +225,12 @@ api:
             auto printer = id(my_thermal_printer);
             printer->set_paper_roll_length(length_mm);
 
-    # Error recovery
     - action: recover_printer
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             printer->recover_from_error();
 
-
-
-# Enhanced Thermal Printer Component with Phase 1 Features
 thermal_printer:
   id: my_thermal_printer
   uart_id: thermal_uart
@@ -251,14 +240,12 @@ thermal_printer:
   enable_qr_codes: true
   startup_message: true
 
-# Text Sensors
 text_sensor:
   - platform: thermal_printer
     thermal_printer_id: my_thermal_printer
     name: "Paper Status"
     id: paper_status
 
-  # Simple printer status
   - platform: template
     name: "Printer Status"
     id: printer_status_simple
@@ -271,24 +258,19 @@ text_sensor:
       }
     update_interval: 30s
 
-# Binary Sensors
 binary_sensor:
   - platform: thermal_printer
     thermal_printer_id: my_thermal_printer
     name: "Paper Loaded"
     id: paper_loaded
-    # Removed device_class: paper (doesn't exist)
 
-  # Simple printer online check
   - platform: template
     name: "Printer Online"
     id: printer_online
     device_class: connectivity
     lambda: |-
-      return id(my_thermal_printer)->has_paper(); // Simplified check
-    # Removed update_interval (binary_sensor doesn't support it)
+      return id(my_thermal_printer)->has_paper();
 
-# Sensors
 sensor:
   - platform: uptime
     name: "Uptime"
@@ -297,7 +279,6 @@ sensor:
     name: "WiFi Signal"
     update_interval: 60s
 
-  # Usage sensors
   - platform: template
     name: "Paper Usage (mm)"
     id: paper_usage_mm
@@ -337,7 +318,6 @@ sensor:
       return id(my_thermal_printer)->get_characters_printed();
     update_interval: 30s
 
-  # Performance metrics
   - platform: template
     name: "Characters Per Minute"
     id: chars_per_minute
@@ -352,25 +332,11 @@ sensor:
       return 0.0f;
     update_interval: 60s
 
-  - platform: template
-    name: "Paper Remaining (mm)"
-    id: paper_remaining_mm
-    icon: mdi:tape-measure
-    unit_of_measurement: "mm"
-    accuracy_decimals: 0
-    lambda: |-
-      float used = id(my_thermal_printer)->get_paper_usage_mm();
-      float total = 30000.0; // 30m default roll
-      return std::max(0.0f, total - used);
-    update_interval: 30s
-
-# Status LED
 status_led:
   pin:
     number: GPIO2
     inverted: true
 
-# Switches
 switch:
   - platform: template
     name: "Printer Wake"
@@ -384,7 +350,6 @@ switch:
       - lambda: |-
           id(my_thermal_printer)->sleep();
 
-# Number Controls
 number:
   - platform: template
     name: "Line Spacing"
@@ -400,7 +365,6 @@ number:
       - lambda: |-
           id(my_thermal_printer)->set_line_height(x);
 
-# Select Controls
 select:
   - platform: template
     name: "Default Text Size"
@@ -423,7 +387,6 @@ select:
             printer->set_text_size(3);
           }
 
-# Button Controls
 button:
   - platform: template
     name: "Print Test Page"
@@ -446,7 +409,6 @@ button:
           printer->feed(1);
           printer->justify('L');
 
-# Web Server
 web_server:
   port: 80
   version: 2
