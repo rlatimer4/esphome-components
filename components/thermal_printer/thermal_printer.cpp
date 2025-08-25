@@ -590,51 +590,85 @@ void ThermalPrinterComponent::print_rotated_text(const char* text, uint8_t rotat
   }
   
   if (rotation == 1) {
-    // 90-degree rotation: Print text vertically down the paper roll
-    ESP_LOGI(TAG, "Printing text vertically down the paper roll");
+    // 90-degree rotation: Large rotated letters printed vertically down the paper
+    ESP_LOGI(TAG, "Printing large rotated letters vertically down the paper roll");
     
-    // Center the text horizontally
+    // Set maximum text size for dramatic effect
+    this->set_text_size(3);  // Large size
+    
+    // Center the text horizontally for best appearance
     this->justify('C');
     
-    // Print each character on its own line for vertical effect
+    // Enable 90-degree character rotation
+    this->set_rotation(1);
+    
+    // Print each character on its own line with rotated orientation
     for (size_t i = 0; i < strlen(text); i++) {
       if (text[i] == ' ') {
-        // Print a visual space indicator or just a blank line
-        this->print_text(" ");
+        // Print a visual space indicator or just extra spacing
+        this->print_text("·");  // Small dot for space
         this->feed(1);
       } else if (text[i] == '\n') {
         // Add extra space for paragraph breaks
-        this->feed(2);
+        this->feed(3);
       } else {
-        // Print each character centered on its own line
+        // Print each character rotated and large
         char single_char[2] = {text[i], '\0'};
         this->print_text(single_char);
-        this->feed(1);
+        this->feed(2);  // Extra spacing between rotated letters
       }
     }
     
-    // Add some spacing at the end
-    this->feed(2);
+    // Reset rotation and formatting
+    this->set_rotation(0);
+    this->justify('L');
+    this->set_text_size(2);  // Reset to medium
+    
+    // Add final spacing
+    this->feed(3);
     
   } else if (rotation == 2) {
-    // 180-degree rotation: Print text upside down (if printer supports it)
+    // 180-degree rotation: Print text upside down
     this->set_rotation(2);
+    this->set_text_size(3);  // Large size
+    this->justify('C');
     this->print_text(text);
     this->set_rotation(0);
+    this->justify('L');
+    this->set_text_size(2);
     this->feed(2);
     
-  } else {
-    // Use ESC/POS rotation commands for other rotations
-    this->set_rotation(rotation);
-    this->print_text(text);
+  } else if (rotation == 3) {
+    // 270-degree rotation: Mirror of 90-degree
+    this->set_text_size(3);
+    this->justify('C');
+    this->set_rotation(3);
+    
+    for (size_t i = 0; i < strlen(text); i++) {
+      if (text[i] == ' ') {
+        this->print_text("·");
+        this->feed(1);
+      } else if (text[i] != '\n') {
+        char single_char[2] = {text[i], '\0'};
+        this->print_text(single_char);
+        this->feed(2);
+      } else {
+        this->feed(3);
+      }
+    }
+    
     this->set_rotation(0);
-    this->feed(2);
+    this->justify('L');
+    this->set_text_size(2);
+    this->feed(3);
+    
+  } else {
+    // Default: normal text
+    this->print_text(text);
+    this->feed(1);
   }
   
-  // Reset alignment
-  this->justify('L');
-  
-  ESP_LOGI(TAG, "Rotated text printed: %d rotation", rotation);
+  ESP_LOGI(TAG, "Rotated text printed: rotation=%d", rotation);
 }
 
 // QR Code Generation - Fixed to use individual write_byte calls
