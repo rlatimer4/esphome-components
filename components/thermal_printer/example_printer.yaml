@@ -48,7 +48,7 @@ uart:
 api:
   encryption:
     key: !secret api_encryption_key
- # Ultra-simple working services for Phase 1
+  # Ultra-simple working services for Phase 1
   actions:
     # Basic enhanced text printing with rotation
     - action: print_text
@@ -88,14 +88,76 @@ api:
             printer->inverse_off();
             printer->justify('L');
 
-    # Enhanced 90-degree rotated text - NEW: Prints vertically down the paper
-    - action: print_rotated_text
+    # NEW: Maximum impact rotated text - Large rotated letters vertically
+    - action: print_banner_text
       variables:
         message: string
-        rotation: int  # 1=vertical down paper, 2=180°, 3=270°
+        size: string  # S, M, L, XL for different impact levels
+        spacing: int  # Lines between letters (default 2)
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
+            
+            // Set text size based on parameter
+            if (size == "XL" || size == "xl") {
+              printer->set_text_size(3);  // Maximum size
+            } else if (size == "L" || size == "l") {
+              printer->set_text_size(3);
+            } else if (size == "M" || size == "m") {
+              printer->set_text_size(2);
+            } else {
+              printer->set_text_size(1);
+            }
+            
+            printer->justify('C');
+            printer->set_rotation(1);  // 90-degree rotation
+            
+            const char* text = message.c_str();
+            int letter_spacing = spacing > 0 ? spacing : 2;
+            
+            for (size_t i = 0; i < strlen(text); i++) {
+              if (text[i] == ' ') {
+                // Visual space indicator
+                printer->print_text("•");
+                printer->feed(letter_spacing);
+              } else if (text[i] == '\n') {
+                // Extra space for line breaks
+                printer->feed(letter_spacing * 2);
+              } else {
+                // Print large rotated character
+                char single_char[2] = {text[i], '\0'};
+                printer->print_text(single_char);
+                printer->feed(letter_spacing);
+              }
+            }
+            
+            // Reset everything
+            printer->set_rotation(0);
+            printer->justify('L');
+            printer->set_text_size(2);
+            printer->feed(3);  // Final spacing
+
+    # Enhanced existing rotated text with size control
+    - action: print_rotated_text
+      variables:
+        message: string
+        rotation: int  # 1=90°, 2=180°, 3=270°
+        size: string   # S, M, L for size control
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            
+            // Set size if provided
+            if (!size.empty()) {
+              if (size == "L" || size == "l") {
+                printer->set_text_size(3);
+              } else if (size == "M" || size == "m") {
+                printer->set_text_size(2);
+              } else {
+                printer->set_text_size(1);
+              }
+            }
+            
             printer->print_rotated_text(message.c_str(), rotation);
 
     # NEW: Dedicated vertical text service for clarity
@@ -259,7 +321,7 @@ api:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             printer->recover_from_error();
-            
+
 thermal_printer:
   id: my_thermal_printer
   uart_id: thermal_uart
