@@ -88,7 +88,7 @@ api:
             printer->inverse_off();
             printer->justify('L');
 
-    # NEW: Maximum impact rotated text - Large rotated letters vertically
+    # NEW: Maximum impact rotated text - Large rotated letters vertically  
     - action: print_banner_text
       variables:
         message: string
@@ -110,7 +110,9 @@ api:
             }
             
             printer->justify('C');
-            printer->set_rotation(1);  // 90-degree rotation
+            
+            // THIS WAS MISSING - Enable character rotation FIRST
+            printer->set_rotation(1);  // 90-degree rotation for each character
             
             const char* text = message.c_str();
             int letter_spacing = spacing > 0 ? spacing : 2;
@@ -132,7 +134,7 @@ api:
             }
             
             // Reset everything
-            printer->set_rotation(0);
+            printer->set_rotation(0);  // CRITICAL: Reset rotation
             printer->justify('L');
             printer->set_text_size(2);
             printer->feed(3);  // Final spacing
