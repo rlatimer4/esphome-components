@@ -48,6 +48,7 @@ uart:
 api:
   encryption:
     key: !secret api_encryption_key
+   
   # Ultra-simple working services for Phase 1
   actions:
     # Basic enhanced text printing with rotation
@@ -98,26 +99,44 @@ api:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             
-            // Set text size based on parameter
+            ESP_LOGI("thermal_printer", "Banner print: '%s', size: %s, spacing: %d", 
+                     message.c_str(), size.c_str(), spacing);
+            
+            // Set text size based on parameter with XL support
             if (size == "XL" || size == "xl") {
-              printer->set_text_size(3);  // Maximum size
+              // XL: Use large size with double width and height
+              printer->set_text_size(3);  // Maximum base size
+              printer->double_width_on();  // Make it even wider
+              printer->double_height_on(); // Make it even taller
+              ESP_LOGI("thermal_printer", "Using XL size: 3 + double width/height");
             } else if (size == "L" || size == "l") {
-              printer->set_text_size(3);
+              printer->set_text_size(3);  // Large
+              ESP_LOGI("thermal_printer", "Using L size: 3");
             } else if (size == "M" || size == "m") {
-              printer->set_text_size(2);
+              printer->set_text_size(2);  // Medium
+              ESP_LOGI("thermal_printer", "Using M size: 2");
             } else {
-              printer->set_text_size(1);
+              printer->set_text_size(1);  // Small
+              ESP_LOGI("thermal_printer", "Using S size: 1");
             }
             
+            // Center alignment and enable rotation
             printer->justify('C');
             
-            // THIS WAS MISSING - Enable character rotation FIRST
+            // Test different rotation approaches for QR204 compatibility
+            ESP_LOGI("thermal_printer", "Setting rotation...");
             printer->set_rotation(1);  // 90-degree rotation for each character
             
             const char* text = message.c_str();
+            size_t text_len = strlen(text);
             int letter_spacing = spacing > 0 ? spacing : 2;
             
-            for (size_t i = 0; i < strlen(text); i++) {
+            ESP_LOGI("thermal_printer", "Printing %d characters with spacing %d", text_len, letter_spacing);
+            
+            // Print each character with proper bounds checking
+            for (size_t i = 0; i < text_len; i++) {
+              ESP_LOGD("thermal_printer", "Printing character %d: '%c'", i, text[i]);
+              
               if (text[i] == ' ') {
                 // Visual space indicator
                 printer->print_text("•");
@@ -126,25 +145,167 @@ api:
                 // Extra space for line breaks
                 printer->feed(letter_spacing * 2);
               } else {
-                // Print large rotated character
-                char single_char[2] = {text[i], '\0'};
+                // Print character - create proper null-terminated string
+                char single_char[2];
+                single_char[0] = text[i];
+                single_char[1] = '\0';
+                
+                ESP_LOGD("thermal_printer", "Printing single char: '%s'", single_char);
                 printer->print_text(single_char);
                 printer->feed(letter_spacing);
               }
             }
             
-            // Reset everything
-            printer->set_rotation(0);  // CRITICAL: Reset rotation
+            ESP_LOGI("thermal_printer", "Finished printing all characters, resetting...");
+            
+            // Reset everything carefully
+            printer->set_rotation(0);  // CRITICAL: Reset rotation first
+            printer->double_width_off();  // Reset width
+            printer->double_height_off(); // Reset height  
+            printer->justify('L');     // Reset alignment
+            printer->set_text_size(2); // Reset to normal size
+            printer->feed(3);          // Final spacing
+            
+    # Alternative banner method if ESC V rotation doesn't work on QR204
+    - action: print_banner_alt
+      variables:
+        message: string
+        size: string
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            
+            ESP_LOGI("thermal_printer", "Alternative banner (no rotation): '%s'", message.c_str());
+            
+            // Try a different approach - use maximum size and spacing
+            if (size == "XL" || size == "xl") {
+              printer->set_text_size(3);
+              printer->double_width_on();
+              printer->double_height_on();
+            } else if (size == "L" || size == "l") {
+              printer->set_text_size(3);
+            } else {
+              printer->set_text_size(2);
+            }
+            
+            printer->justify('C');
+            
+            const char* text = message.c_str();
+            
+            // Print each character on its own line with maximum impact
+            for (size_t i = 0; i < strlen(text); i++) {
+              if (text[i] == ' ') {
+                printer->print_text("▪");  // Block for space
+                printer->feed(3);
+              } else if (text[i] != '\n') {
+                char single_char[2] = {text[i], '\0'};
+                printer->print_text(single_char);
+                printer->feed(3);  // Extra spacing for drama
+              }
+            }
+            
+            // Reset
+            printer->double_width_off();
+            printer->double_height_off();
             printer->justify('L');
             printer->set_text_size(2);
-            printer->feed(3);  // Final spacing
+            printer->feed(4);
+            
+            ESP_LOGI("thermal_printer", "Alternative banner complete");
 
-    # Enhanced existing rotated text with size control
+    # Debug rotation command - test if QR204 supports ESC V
+    - action: test_rotation
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            
+            ESP_LOGI("thermal_printer", "Testing rotation support...");
+            
+            // Print normal
+            printer->print_text("NORMAL");
+            printer->feed(2);
+            
+            // Try rotation
+            printer->set_rotation(1);
+            printer->print_text("ROTATED?");
+            printer->set_rotation(0);
+            printer->feed(2);
+            
+            // Print normal again
+            printer->print_text("NORMAL AGAIN");
+            printer->feed(3);
+            
+            ESP_LOGI("thermal_printer", "Rotation test complete");
+
+    # NEW: Label-style printing - Rotated characters printed vertically (BEST OF BOTH!)
+    - action: print_label_text
+      variables:
+        message: string
+        size: string    # S, M, L, XL for size control
+        spacing: int    # Lines between characters (default 1)
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            
+            ESP_LOGI("thermal_printer", "Label-style print: '%s', size: %s, spacing: %d", 
+                     message.c_str(), size.c_str(), spacing);
+            
+            // Set text size based on parameter
+            if (size == "XL" || size == "xl") {
+              printer->set_text_size(3);
+              printer->double_width_on();
+              printer->double_height_on();
+            } else if (size == "L" || size == "l") {
+              printer->set_text_size(3);
+            } else if (size == "M" || size == "m") {
+              printer->set_text_size(2);
+            } else {
+              printer->set_text_size(1);
+            }
+            
+            // Center alignment for best appearance
+            printer->justify('C');
+            
+            // CRITICAL: Enable 90-degree rotation FIRST
+            printer->set_rotation(1);
+            
+            const char* text = message.c_str();
+            size_t text_len = strlen(text);
+            int char_spacing = spacing > 0 ? spacing : 1;
+            
+            // Print each character rotated AND on separate lines
+            for (size_t i = 0; i < text_len; i++) {
+              if (text[i] == ' ') {
+                // Visual space indicator
+                printer->print_text("·");
+                printer->feed(char_spacing);
+              } else if (text[i] == '\n') {
+                // Extra space for line breaks
+                printer->feed(char_spacing * 2);
+              } else {
+                // Print rotated character on its own line
+                char single_char[2] = {text[i], '\0'};
+                printer->print_text(single_char);  // This should be rotated 90°
+                printer->feed(char_spacing);       // Move to next line
+              }
+            }
+            
+            // Reset everything
+            printer->set_rotation(0);       // Turn off rotation
+            printer->double_width_off();    // Reset width
+            printer->double_height_off();   // Reset height
+            printer->justify('L');          // Reset alignment
+            printer->set_text_size(2);      // Reset size
+            printer->feed(2);               // Final spacing
+            
+            ESP_LOGI("thermal_printer", "Label-style print complete");
+
+    # Keep the working individual services for comparison
     - action: print_rotated_text
       variables:
         message: string
-        rotation: int  # 1=90°, 2=180°, 3=270°
-        size: string   # S, M, L for size control
+        rotation: int
+        size: string
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
@@ -162,15 +323,13 @@ api:
             
             printer->print_rotated_text(message.c_str(), rotation);
 
-    # NEW: Dedicated vertical text service for clarity
     - action: print_vertical_text
       variables:
         message: string
-        spacing: int  # Lines between characters (default 1)
+        spacing: int
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            // Print text vertically with custom spacing
             printer->justify('C');
             
             const char* text = message.c_str();
@@ -178,19 +337,19 @@ api:
             
             for (size_t i = 0; i < strlen(text); i++) {
               if (text[i] == ' ') {
-                printer->print_text("·");  // Visual space
+                printer->print_text("·");
                 printer->feed(char_spacing);
               } else if (text[i] != '\n') {
                 char single_char[2] = {text[i], '\0'};
                 printer->print_text(single_char);
                 printer->feed(char_spacing);
               } else {
-                printer->feed(char_spacing * 2);  // Extra space for line breaks
+                printer->feed(char_spacing * 2);
               }
             }
             
-            printer->feed(2);  // Final spacing
-            printer->justify('L');  // Reset alignment
+            printer->feed(2);
+            printer->justify('L');
 
     # QR Code printing - NEW Phase 1 Feature  
     - action: print_qr_code
