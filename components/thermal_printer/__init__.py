@@ -2,6 +2,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import uart
 from esphome.const import CONF_ID
+from esphome import pins
 
 CODEOWNERS = ["@user"]
 DEPENDENCIES = ["uart"]
@@ -24,7 +25,11 @@ CONF_STARTUP_MESSAGE = "startup_message"
 CONF_ENABLE_ROTATION = "enable_rotation"
 CONF_ENABLE_QR_CODES = "enable_qr_codes"
 
-# Simplified configuration schema for Phase 1
+# NEW: DTR Handshaking Configuration
+CONF_DTR_PIN = "dtr_pin"
+CONF_ENABLE_DTR = "enable_dtr_handshaking"
+
+# Enhanced configuration schema with DTR support
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
@@ -46,10 +51,14 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_PAPER_ROLL_LENGTH, default=30000): cv.positive_float,
             cv.Optional(CONF_LINE_HEIGHT_CALIBRATION, default=4.0): cv.float_range(min=1.0, max=10.0),
             
-            # Feature toggles (Phase 1)
+            # Feature toggles
             cv.Optional(CONF_ENABLE_ROTATION, default=True): cv.boolean,
             cv.Optional(CONF_ENABLE_QR_CODES, default=True): cv.boolean,
             cv.Optional(CONF_STARTUP_MESSAGE, default=True): cv.boolean,
+            
+            # NEW: DTR Handshaking (Hardware Flow Control)
+            cv.Optional(CONF_ENABLE_DTR, default=False): cv.boolean,
+            cv.Optional(CONF_DTR_PIN): pins.internal_gpio_input_pin_schema,
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -88,25 +97,61 @@ def validate_paper_settings(config):
     
     return config
 
-# Apply validation functions
+def validate_dtr_settings(config):
+    """Validate DTR handshaking configuration"""
+    enable_dtr = config.get(CONF_ENABLE_DTR, False)
+    dtr_pin = config.get(CONF_DTR_PIN)
+    
+    if enable_dtr and dtr_pin is None:
+        raise cv.Invalid(
+            "DTR handshaking is enabled but no dtr_pin specified. "
+            "Either disable DTR handshaking or specify a DTR pin."
+        )
+    
+    if not enable_dtr and dtr_pin is not None:
+        raise cv.Invalid(
+            "DTR pin specified but DTR handshaking is disabled. "
+            "Either enable DTR handshaking or remove the dtr_pin configuration."
+        )
+    
+    return config
+
+# Apply all validation functions
 CONFIG_SCHEMA = cv.All(
     CONFIG_SCHEMA,
     validate_heat_settings,
-    validate_paper_settings
+    validate_paper_settings,
+    validate_dtr_settings
 )
 
 async def to_code(config):
-    """Generate the component code with enhanced configuration"""
+    """Generate the component code with DTR handshaking support"""
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
     
-    # Only add configuration calls for methods that exist in the base component
+    # Basic configuration
     if CONF_PAPER_ROLL_LENGTH in config:
         cg.add(var.set_paper_roll_length(config[CONF_PAPER_ROLL_LENGTH]))
     
     if CONF_LINE_HEIGHT_CALIBRATION in config:
         cg.add(var.set_line_height_calibration(config[CONF_LINE_HEIGHT_CALIBRATION]))
+    
+    # Heat configuration
+    if CONF_HEAT_DOTS in config:
+        cg.add(var.set_heat_dots(config[CONF_HEAT_DOTS]))
+    
+    if CONF_HEAT_TIME in config:
+        cg.add(var.set_heat_time(config[CONF_HEAT_TIME]))
+    
+    if CONF_HEAT_INTERVAL in config:
+        cg.add(var.set_heat_interval(config[CONF_HEAT_INTERVAL]))
+    
+    # NEW: DTR Handshaking Configuration
+    if config.get(CONF_ENABLE_DTR, False):
+        dtr_pin = await cg.gpio_pin_expression(config[CONF_DTR_PIN])
+        cg.add(var.set_dtr_pin(dtr_pin))
+        cg.add(var.enable_dtr_handshaking(True))
     
     # Add compile-time definitions
     cg.add_define("THERMAL_PRINTER_PAPER_WIDTH", config.get(CONF_PAPER_WIDTH, 58))
@@ -118,3 +163,6 @@ async def to_code(config):
     
     if config.get(CONF_ENABLE_QR_CODES, True):
         cg.add_define("THERMAL_PRINTER_ENABLE_QR_CODES")
+    
+    if config.get(CONF_ENABLE_DTR, False):
+        cg.add_define("THERMAL_PRINTER_ENABLE_DTR")
