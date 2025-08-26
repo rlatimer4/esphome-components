@@ -148,6 +148,12 @@ void ThermalPrinterComponent::write_byte_with_flow_control(uint8_t byte) {
   }
 }
 
+void ThermalPrinterComponent::write_bytes_with_flow_control(const uint8_t *data, size_t length) {
+  for (size_t i = 0; i < length; i++) {
+    this->write_byte_with_flow_control(data[i]);
+  }
+}
+
 // ===== PRINT INTERFACE =====
 
 size_t ThermalPrinterComponent::write(uint8_t c) {
@@ -206,6 +212,30 @@ void ThermalPrinterComponent::reset() {
   }
 }
 
+void ThermalPrinterComponent::test() {
+  this->print_text("Hello World!");
+  this->feed(2);
+}
+
+void ThermalPrinterComponent::test_page() {
+  this->write_byte_with_flow_control(ASCII_DC2);
+  this->write_byte_with_flow_control('T');
+  
+  if (this->is_dtr_enabled()) {
+    this->wait_for_printer_ready(10000);
+  } else {
+    delay(1000);
+  }
+  
+  this->track_print_operation(0, 10, 0);
+}
+
+void ThermalPrinterComponent::normal() {
+  this->write_byte_with_flow_control(ASCII_ESC);
+  this->write_byte_with_flow_control('!');
+  this->write_byte_with_flow_control(0);
+}
+
 void ThermalPrinterComponent::set_default() {
   this->online();
   this->justify('L');
@@ -214,11 +244,6 @@ void ThermalPrinterComponent::set_default() {
   this->underline_off();
   this->set_size('S');
   this->set_line_height();
-}
-
-void ThermalPrinterComponent::test() {
-  this->print_text("Hello World!");
-  this->feed(2);
 }
 
 void ThermalPrinterComponent::set_heat_config(uint8_t dots, uint8_t time, uint8_t interval) {
@@ -263,6 +288,28 @@ void ThermalPrinterComponent::inverse_off() {
   this->inverse_on(false);
 }
 
+void ThermalPrinterComponent::double_height_on(bool state) {
+  uint8_t value = state ? 0x10 : 0x00;
+  this->write_byte_with_flow_control(ASCII_ESC);
+  this->write_byte_with_flow_control('!');
+  this->write_byte_with_flow_control(value);
+}
+
+void ThermalPrinterComponent::double_height_off() {
+  this->double_height_on(false);
+}
+
+void ThermalPrinterComponent::double_width_on(bool state) {
+  uint8_t value = state ? 0x20 : 0x00;
+  this->write_byte_with_flow_control(ASCII_ESC);
+  this->write_byte_with_flow_control('!');
+  this->write_byte_with_flow_control(value);
+}
+
+void ThermalPrinterComponent::double_width_off() {
+  this->double_width_on(false);
+}
+
 void ThermalPrinterComponent::set_size(char value) {
   uint8_t size = 0;
   switch (value) {
@@ -291,6 +338,25 @@ void ThermalPrinterComponent::set_line_height(uint8_t height) {
   this->write_byte_with_flow_control(height);
 }
 
+void ThermalPrinterComponent::set_bar_code_height(uint8_t height) {
+  if (height < 1) height = 1;
+  this->write_byte_with_flow_control(ASCII_GS);
+  this->write_byte_with_flow_control('h');
+  this->write_byte_with_flow_control(height);
+}
+
+void ThermalPrinterComponent::set_charset(uint8_t charset) {
+  this->write_byte_with_flow_control(ASCII_ESC);
+  this->write_byte_with_flow_control('R');
+  this->write_byte_with_flow_control(charset);
+}
+
+void ThermalPrinterComponent::set_code_page(uint8_t codePage) {
+  this->write_byte_with_flow_control(ASCII_ESC);
+  this->write_byte_with_flow_control('t');
+  this->write_byte_with_flow_control(codePage);
+}
+
 void ThermalPrinterComponent::justify(char value) {
   uint8_t pos = 0;
   switch (value) {
@@ -317,7 +383,14 @@ void ThermalPrinterComponent::feed(uint8_t x) {
   this->track_print_operation(0, 0, x);
 }
 
-void ThermalPrinterComponent::print_barcode(int type, const char *text) {
+void ThermalPrinterComponent::feed_rows(uint8_t rows) {
+  this->write_byte_with_flow_control(ASCII_ESC);
+  this->write_byte_with_flow_control('J');
+  this->write_byte_with_flow_control(rows);
+  this->track_print_operation(0, 0, rows);
+}
+
+void ThermalPrinterComponent::print_barcode(const char *text, uint8_t type) {
   this->write_byte_with_flow_control(ASCII_GS);
   this->write_byte_with_flow_control('H');
   this->write_byte_with_flow_control(2);
@@ -326,7 +399,7 @@ void ThermalPrinterComponent::print_barcode(int type, const char *text) {
   this->write_byte_with_flow_control(3);
   this->write_byte_with_flow_control(ASCII_GS);
   this->write_byte_with_flow_control('k');
-  this->write_byte_with_flow_control((uint8_t)type);
+  this->write_byte_with_flow_control(type);
   
   for (const char *p = text; *p != 0; p++) {
     this->write_byte_with_flow_control(*p);
@@ -342,10 +415,20 @@ void ThermalPrinterComponent::print_barcode(int type, const char *text) {
   this->track_print_operation(strlen(text), 3, 0);
 }
 
+void ThermalPrinterComponent::print_barcode(int type, const char *text) {
+  this->print_barcode(text, (uint8_t)type);
+}
+
 void ThermalPrinterComponent::online() {
   this->write_byte_with_flow_control(ASCII_ESC);
   this->write_byte_with_flow_control('=');
   this->write_byte_with_flow_control(1);
+}
+
+void ThermalPrinterComponent::offline() {
+  this->write_byte_with_flow_control(ASCII_ESC);
+  this->write_byte_with_flow_control('=');
+  this->write_byte_with_flow_control(0);
 }
 
 // ===== TEXT PRINTING =====
@@ -510,6 +593,21 @@ void ThermalPrinterComponent::print_two_column(const char *left_text, const char
   this->set_size('S');
 }
 
+void ThermalPrinterComponent::print_table_row(const char *col1, const char *col2, const char *col3) {
+  if (col3 == nullptr) {
+    // Two column table
+    this->print_padded_line(col1, col2, 32, ' ');
+  } else {
+    // Three column table (10 chars each + 2 spaces)
+    char line[33];
+    snprintf(line, sizeof(line), "%-10.10s %-10.10s %-10.10s", col1, col2, col3);
+    this->print(line);
+    this->print("\n");
+    
+    this->track_print_operation(strlen(line) + 1, 1, 0);
+  }
+}
+
 bool ThermalPrinterComponent::has_paper() {
   this->write_byte_with_flow_control(ASCII_ESC);
   this->write_byte_with_flow_control('v');
@@ -563,6 +661,265 @@ void ThermalPrinterComponent::set_line_height_calibration(float mm_per_line) {
 
 void ThermalPrinterComponent::set_paper_check_callback(std::function<void(bool)> &&callback) {
   this->paper_check_callback_ = callback;
+}
+
+// ===== ENHANCED METHODS =====
+
+PrintResult ThermalPrinterComponent::safe_print_text(const char* text) {
+  if (!text || strlen(text) == 0) {
+    return PrintResult::SUCCESS;
+  }
+  
+  if (!this->has_paper()) {
+    ESP_LOGW(TAG, "Cannot print: Paper out");
+    return PrintResult::PAPER_OUT;
+  }
+  
+  uint16_t estimated_lines = this->estimate_lines_for_text(text);
+  
+  if (!this->can_print_job(estimated_lines)) {
+    ESP_LOGW(TAG, "Cannot print: Insufficient paper");
+    return PrintResult::INSUFFICIENT_PAPER;
+  }
+  
+  this->print_text(text);
+  
+  ESP_LOGI(TAG, "Print completed successfully");
+  return PrintResult::SUCCESS;
+}
+
+bool ThermalPrinterComponent::get_detailed_status(PrinterStatus* status) {
+  if (!status) return false;
+  
+  status->paper_present = this->has_paper();
+  status->cover_open = false;
+  status->cutter_error = false;
+  status->printer_online = true;
+  status->dtr_ready = this->dtr_ready();
+  status->temperature_estimate = 25.0;
+  status->last_response_time = millis();
+  status->dtr_timeouts = this->dtr_timeout_count_;
+  
+  return true;
+}
+
+bool ThermalPrinterComponent::can_print_job(uint16_t estimated_lines) {
+  float required_mm = estimated_lines * this->line_height_mm_;
+  float remaining_mm = this->paper_roll_length_ - this->get_paper_usage_mm();
+  
+  return required_mm <= remaining_mm;
+}
+
+uint16_t ThermalPrinterComponent::estimate_lines_for_text(const char* text) {
+  if (!text) return 0;
+  
+  uint16_t lines = 1;
+  size_t text_len = strlen(text);
+  
+  for (size_t i = 0; i < text_len; i++) {
+    if (text[i] == '\n') lines++;
+  }
+  
+  uint16_t current_line_length = 0;
+  for (size_t i = 0; i < text_len; i++) {
+    if (text[i] == '\n') {
+      current_line_length = 0;
+    } else {
+      current_line_length++;
+      if (current_line_length >= 32) {
+        lines++;
+        current_line_length = 0;
+      }
+    }
+  }
+  
+  return lines;
+}
+
+float ThermalPrinterComponent::predict_paper_usage_for_job(const char* text, uint8_t text_size) {
+  if (!text) return 0.0;
+  
+  uint16_t lines = this->estimate_lines_for_text(text);
+  
+  float size_multiplier = 1.0;
+  switch (text_size) {
+    case 'L': size_multiplier = 2.0; break;
+    case 'M': size_multiplier = 1.5; break;
+    case 'S': 
+    default:  size_multiplier = 1.0; break;
+  }
+  
+  return lines * this->line_height_mm_ * size_multiplier;
+}
+
+void ThermalPrinterComponent::set_heat_config_advanced(uint8_t dots, uint8_t time, uint8_t interval, uint8_t density) {
+  this->write_byte_with_flow_control(ASCII_ESC);
+  this->write_byte_with_flow_control('7');
+  this->write_byte_with_flow_control(dots & 0x0F);
+  this->write_byte_with_flow_control(time & 0xFF);
+  this->write_byte_with_flow_control(interval & 0xFF);
+  
+  this->write_byte_with_flow_control(ASCII_DC2);
+  this->write_byte_with_flow_control('#');
+  this->write_byte_with_flow_control((density << 4) | density);
+  
+  ESP_LOGD(TAG, "Set advanced heat config: dots=%d, time=%d, interval=%d, density=%d", 
+           dots, time, interval, density);
+}
+
+void ThermalPrinterComponent::print_simple_receipt(const char* business_name, const char* total) {
+  ESP_LOGI(TAG, "Printing simple receipt");
+  
+  if (!this->has_paper()) {
+    ESP_LOGW(TAG, "Cannot print receipt: No paper");
+    return;
+  }
+  
+  this->set_text_size(2);
+  this->justify('C');
+  this->bold_on();
+  this->print_text(business_name ? business_name : "Receipt");
+  this->bold_off();
+  this->feed(2);
+  
+  this->justify('L');
+  this->set_text_size(1);
+  this->print_text("Date: [Current]");
+  this->print_text("--------------------------------");
+  this->feed(1);
+  
+  if (total) {
+    this->set_text_size(1);
+    this->bold_on();
+    this->print_two_column("TOTAL:", total, true, 'S');
+    this->bold_off();
+  }
+  
+  this->feed(3);
+  
+  this->justify('C');
+  this->print_text("Thank you!");
+  this->feed(4);
+  
+  this->justify('L');
+  this->set_text_size(2);
+}
+
+void ThermalPrinterComponent::print_shopping_list(const char* items_string) {
+  if (!items_string || strlen(items_string) == 0) {
+    ESP_LOGW(TAG, "Empty shopping list");
+    return;
+  }
+  
+  ESP_LOGI(TAG, "Printing shopping list");
+  
+  this->set_text_size(2);
+  this->justify('C');
+  this->bold_on();
+  this->print_text("SHOPPING LIST");
+  this->bold_off();
+  this->feed(2);
+  
+  this->set_text_size(1);
+  this->print_text("Date: [Today]");
+  this->feed(1);
+  
+  this->print_text("================================");
+  this->feed(1);
+  
+  this->justify('L');
+  char line[64];
+  snprintf(line, sizeof(line), "1. [ ] %s", items_string);
+  this->print_text(line);
+  this->feed(1);
+  
+  this->feed(2);
+  this->print_text("================================");
+  this->feed(4);
+  
+  this->justify('L');
+  this->set_text_size(2);
+}
+
+bool ThermalPrinterComponent::validate_config() {
+  bool valid = true;
+  
+  if (!this->parent_) {
+    ESP_LOGE(TAG, "UART parent not configured");
+    valid = false;
+  } else {
+    uint32_t baud_rate = this->parent_->get_baud_rate();
+    if (baud_rate != 9600 && baud_rate != 19200 && baud_rate != 38400) {
+      ESP_LOGW(TAG, "Unusual baud rate: %d (recommended: 9600)", baud_rate);
+    }
+  }
+  
+  if (this->paper_roll_length_ <= 0) {
+    ESP_LOGW(TAG, "Invalid paper roll length: %.1fmm", this->paper_roll_length_);
+    this->paper_roll_length_ = 30000.0;
+  }
+  
+  if (this->line_height_mm_ <= 0 || this->line_height_mm_ > 10.0) {
+    ESP_LOGW(TAG, "Invalid line height: %.2fmm (setting to 4.0mm)", this->line_height_mm_);
+    this->line_height_mm_ = 4.0;
+  }
+  
+  ESP_LOGD(TAG, "Configuration validation %s", valid ? "passed" : "failed");
+  return valid;
+}
+
+void ThermalPrinterComponent::print_startup_message() {
+  ESP_LOGI(TAG, "Printing startup message");
+  
+  this->justify('C');
+  this->set_text_size(2);
+  this->bold_on();
+  this->print_text("ESPHome Printer");
+  this->bold_off();
+  this->feed(1);
+  
+  this->set_text_size(1);
+  this->print_text("Ready for printing!");
+  this->feed(1);
+  
+  this->print_text("System Started");
+  this->feed(1);
+  
+  this->justify('L');
+  this->set_text_size(2);
+  this->feed(2);
+}
+
+void ThermalPrinterComponent::recover_from_error() {
+  ESP_LOGI(TAG, "Attempting error recovery");
+  
+  while (this->available()) {
+    this->read();
+  }
+  
+  this->reset();
+  delay(1000);
+  
+  this->wake();
+  delay(500);
+  
+  this->set_heat_config_advanced(7, 80, 2, 4);
+  this->set_default();
+  
+  ESP_LOGI(TAG, "Error recovery completed");
+}
+
+void ThermalPrinterComponent::log_performance_stats() {
+  uint32_t uptime_minutes = millis() / 60000;
+  float chars_per_minute = uptime_minutes > 0 ? (float)this->characters_printed_ / uptime_minutes : 0;
+  float lines_per_minute = uptime_minutes > 0 ? (float)this->lines_printed_ / uptime_minutes : 0;
+  
+  ESP_LOGI(TAG, "Performance stats:");
+  ESP_LOGI(TAG, "  Uptime: %u minutes", uptime_minutes);
+  ESP_LOGI(TAG, "  Characters/minute: %.1f", chars_per_minute);
+  ESP_LOGI(TAG, "  Lines/minute: %.1f", lines_per_minute);
+  ESP_LOGI(TAG, "  Paper efficiency: %.1f chars/mm", 
+           this->get_paper_usage_mm() > 0 ? this->characters_printed_ / this->get_paper_usage_mm() : 0);
 }
 
 // ===== HELPER METHODS =====
@@ -623,8 +980,42 @@ void ThermalPrinterComponent::update_performance_stats() {
   // Performance tracking implementation
 }
 
-bool ThermalPrinterComponent::validate_config() {
-  return this->parent_ != nullptr;
+// ===== HELPER WRITE METHODS =====
+
+void ThermalPrinterComponent::write_bytes(uint8_t a) {
+  this->write_byte_with_flow_control(a);
+}
+
+void ThermalPrinterComponent::write_bytes(uint8_t a, uint8_t b) {
+  this->write_byte_with_flow_control(a);
+  this->write_byte_with_flow_control(b);
+}
+
+void ThermalPrinterComponent::write_bytes(uint8_t a, uint8_t b, uint8_t c) {
+  this->write_byte_with_flow_control(a);
+  this->write_byte_with_flow_control(b);
+  this->write_byte_with_flow_control(c);
+}
+
+void ThermalPrinterComponent::write_bytes(uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
+  this->write_byte_with_flow_control(a);
+  this->write_byte_with_flow_control(b);
+  this->write_byte_with_flow_control(c);
+  this->write_byte_with_flow_control(d);
+}
+
+uint32_t ThermalPrinterComponent::calculate_operation_time_micros(uint8_t operation_type, uint8_t data_length) {
+  // Calculate timing based on operation type
+  switch (operation_type) {
+    case 0: // Character printing
+      return this->dot_print_time_micros_ * data_length;
+    case 1: // Line feed
+      return this->dot_feed_time_micros_ * data_length;
+    case 2: // Barcode
+      return this->dot_print_time_micros_ * data_length * 8;
+    default:
+      return this->byte_time_micros_ * data_length;
+  }
 }
 
 }  // namespace thermal_printer
