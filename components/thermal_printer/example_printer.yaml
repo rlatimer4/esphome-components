@@ -1,9 +1,9 @@
-# Minimal Working Enhanced Thermal Printer Configuration
-# Phase 1 Implementation - Core Features Only
+# Enhanced Thermal Printer Configuration with DTR Handshaking
+# Complete implementation with corrected UART pins
 
 esphome:
-  name: thermal_printer_enhanced
-  friendly_name: Enhanced Thermal Printer
+  name: thermal_printer_dtr
+  friendly_name: Enhanced Thermal Printer with DTR
   platform: ESP8266
   board: d1_mini
 
@@ -13,16 +13,17 @@ wifi:
   password: !secret wifi_password
   
   ap:
-    ssid: "ThermalPrinter-Enhanced"
+    ssid: "ThermalPrinter-DTR"
     password: "thermalprint123"
 
 captive_portal:
 
-# Logging
+# Enhanced Logging for DTR debugging
 logger:
   level: INFO
   logs:
     thermal_printer: DEBUG
+    uart: INFO
 
 ota:
   - platform: esphome
@@ -211,7 +212,7 @@ api:
             
             // Rapid character sequence
             for (int i = 0; i < 50; i++) {
-              char test_char[2] = {'0' + (i % 10), '\0'};
+              char test_char[2] = {(char)('0' + (i % 10)), '\0'};
               printer->print_text(test_char);
             }
             printer->feed(1);
@@ -329,7 +330,7 @@ thermal_printer:
   
   # ===== DTR HANDSHAKING CONFIGURATION =====
   enable_dtr_handshaking: true  # Enable hardware flow control
-  dtr_pin: GPIO0                # Boot/Flash pin - connect to printer DTR pin
+  dtr_pin: GPIO4                # Boot/Flash pin - connect to printer DTR pin
   
   # Alternative DTR pin options (if GPIO0 causes boot issues):
   # dtr_pin: GPIO5   # D1 on D1 Mini (recommended alternative)
@@ -603,7 +604,7 @@ button:
           
           // Rapid character sequence
           for (int i = 0; i < 50; i++) {
-            char test_char[2] = {'0' + (i % 10), '\0'};
+            char test_char[2] = {(char)('0' + (i % 10)), '\0'};
             printer->print_text(test_char);
           }
           printer->feed(1);
