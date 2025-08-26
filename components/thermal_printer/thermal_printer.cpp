@@ -410,6 +410,94 @@ void ThermalPrinterComponent::print_rotated_text(const char* text, uint8_t rotat
   this->feed(3);
 }
 
+void ThermalPrinterComponent::print_qr_code(const char* data, uint8_t size, uint8_t error_correction) {
+  if (!data || strlen(data) == 0) {
+    ESP_LOGW(TAG, "Empty QR code data");
+    return;
+  }
+  
+  if (strlen(data) > 2048) {
+    ESP_LOGW(TAG, "QR code data too long");
+    return;
+  }
+  
+  // QR Code Model 2 commands
+  this->write_byte_with_flow_control(ASCII_GS);
+  this->write_byte_with_flow_control('(');
+  this->write_byte_with_flow_control('k');
+  this->write_byte_with_flow_control(4);
+  this->write_byte_with_flow_control(0);
+  this->write_byte_with_flow_control(49);
+  this->write_byte_with_flow_control(65);
+  this->write_byte_with_flow_control(size);
+  this->write_byte_with_flow_control(0);
+  
+  if (this->is_dtr_enabled()) {
+    this->wait_for_printer_ready(1000);
+  } else {
+    delay(10);
+  }
+  
+  // Set error correction
+  this->write_byte_with_flow_control(ASCII_GS);
+  this->write_byte_with_flow_control('(');
+  this->write_byte_with_flow_control('k');
+  this->write_byte_with_flow_control(3);
+  this->write_byte_with_flow_control(0);
+  this->write_byte_with_flow_control(49);
+  this->write_byte_with_flow_control(67);
+  this->write_byte_with_flow_control(error_correction);
+  
+  if (this->is_dtr_enabled()) {
+    this->wait_for_printer_ready(1000);
+  } else {
+    delay(10);
+  }
+  
+  // Store QR data
+  uint16_t data_len = strlen(data);
+  uint16_t total_len = data_len + 3;
+  
+  this->write_byte_with_flow_control(ASCII_GS);
+  this->write_byte_with_flow_control('(');
+  this->write_byte_with_flow_control('k');
+  this->write_byte_with_flow_control(total_len & 0xFF);
+  this->write_byte_with_flow_control((total_len >> 8) & 0xFF);
+  this->write_byte_with_flow_control(49);
+  this->write_byte_with_flow_control(80);
+  this->write_byte_with_flow_control(48);
+  
+  // Send data
+  for (size_t i = 0; i < data_len; i++) {
+    this->write_byte_with_flow_control(data[i]);
+  }
+  
+  if (this->is_dtr_enabled()) {
+    this->wait_for_printer_ready(3000);
+  } else {
+    delay(50);
+  }
+  
+  // Print QR code
+  this->write_byte_with_flow_control(ASCII_GS);
+  this->write_byte_with_flow_control('(');
+  this->write_byte_with_flow_control('k');
+  this->write_byte_with_flow_control(3);
+  this->write_byte_with_flow_control(0);
+  this->write_byte_with_flow_control(49);
+  this->write_byte_with_flow_control(81);
+  this->write_byte_with_flow_control(48);
+  
+  if (this->is_dtr_enabled()) {
+    this->wait_for_printer_ready(10000);
+  } else {
+    delay(300);
+  }
+  
+  this->feed(2);
+  this->track_print_operation(data_len, 8, 2);
+}
+
 void ThermalPrinterComponent::print_two_column(const char *left_text, const char *right_text, bool fill_dots, char text_size) {
   this->set_size(text_size);
   
