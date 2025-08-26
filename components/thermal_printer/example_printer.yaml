@@ -43,12 +43,12 @@ uart:
   data_bits: 8
   parity: NONE
   stop_bits: 1
-  
-# Enhanced Home Assistant API with working Phase 1 services
+
+# Enhanced Home Assistant API with DTR-optimized services
 api:
   encryption:
     key: !secret api_encryption_key
-  
+   
   actions:
     # Enhanced text printing with DTR optimization
     - action: print_text
@@ -552,21 +552,85 @@ button:
     id: dtr_stats_button
     icon: mdi:chart-line
     on_press:
-      - esphome.thermal_printer_dtr_print_dtr_stats:
+      - lambda: |-
+          auto printer = id(my_thermal_printer);
+          
+          if (printer->is_dtr_enabled()) {
+            printer->set_text_size(1);
+            printer->justify('L');
+            printer->print_text("=== DTR STATISTICS ===");
+            printer->feed(1);
+            
+            char stats_line[64];
+            snprintf(stats_line, sizeof(stats_line), "DTR Timeouts: %u", printer->get_dtr_timeouts());
+            printer->print_text(stats_line);
+            printer->feed(1);
+            
+            printer->print_text("DTR: ENABLED");
+            printer->feed(1);
+            
+            printer->print_text("====================");
+            printer->feed(2);
+            
+            ESP_LOGI("thermal_printer", "DTR Stats - Timeouts: %u", printer->get_dtr_timeouts());
+          } else {
+            printer->print_text("DTR: DISABLED");
+            printer->feed(2);
+          }
 
   - platform: template
     name: "Test DTR Performance"
     id: dtr_performance_button
     icon: mdi:speedometer
     on_press:
-      - esphome.thermal_printer_dtr_test_dtr_performance:
+      - lambda: |-
+          auto printer = id(my_thermal_printer);
+          
+          if (!printer->is_dtr_enabled()) {
+            ESP_LOGW("thermal_printer", "DTR not enabled - cannot test performance");
+            return;
+          }
+          
+          ESP_LOGI("thermal_printer", "Testing DTR performance...");
+          
+          // Print test pattern to stress DTR handshaking
+          printer->set_text_size(1);
+          printer->justify('L');
+          printer->print_text("DTR Performance Test");
+          printer->feed(1);
+          
+          uint32_t start_time = millis();
+          
+          // Rapid character sequence
+          for (int i = 0; i < 50; i++) {
+            char test_char[2] = {'0' + (i % 10), '\0'};
+            printer->print_text(test_char);
+          }
+          printer->feed(1);
+          
+          uint32_t test_duration = millis() - start_time;
+          
+          char result_line[64];
+          snprintf(result_line, sizeof(result_line), "Test Duration: %ums", test_duration);
+          printer->print_text(result_line);
+          printer->feed(1);
+          
+          snprintf(result_line, sizeof(result_line), "DTR Timeouts: %u", printer->get_dtr_timeouts());
+          printer->print_text(result_line);
+          printer->feed(3);
+          
+          ESP_LOGI("thermal_printer", "DTR performance test complete: %ums, timeouts: %u", 
+                   test_duration, printer->get_dtr_timeouts());
 
   - platform: template
     name: "Reset DTR Statistics"
     id: dtr_reset_button
     icon: mdi:counter
     on_press:
-      - esphome.thermal_printer_dtr_reset_dtr_stats:
+      - lambda: |-
+          auto printer = id(my_thermal_printer);
+          printer->reset_dtr_stats();
+          ESP_LOGI("thermal_printer", "DTR statistics reset");
 
 web_server:
   port: 80
@@ -600,4 +664,4 @@ web_server:
 #    - Boot issues: Add 10kΩ pullup resistor GPIO0 to 3.3V
 #    - Flash issues: Disconnect DTR wire during programming
 #    - High DTR timeouts: check wiring, printer firmware compatibility
-#    - Missing charact
+#    - Missing characters persist: DTR pin connection issue
