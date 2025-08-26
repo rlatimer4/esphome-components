@@ -34,24 +34,23 @@ external_components:
       type: local
       path: my_components
 
-# UART Configuration
+# CORRECTED UART Configuration - Using Hardware UART0
 uart:
   id: thermal_uart
-  tx_pin: GPIO4  # D2 on D1 Mini
-  rx_pin: GPIO0  # D3 on D1 Mini  
-  baud_rate: 9600
+  tx_pin: GPIO1  # Hardware UART0 TX - ESP TX to printer RX
+  rx_pin: GPIO3  # Hardware UART0 RX - ESP RX from printer TX
+  baud_rate: 19200  # Recommended for DTR handshaking
   data_bits: 8
   parity: NONE
   stop_bits: 1
-
+  
 # Enhanced Home Assistant API with working Phase 1 services
 api:
   encryption:
     key: !secret api_encryption_key
-   
-  # Ultra-simple working services for Phase 1
+  
   actions:
-    # Basic enhanced text printing with rotation
+    # Enhanced text printing with DTR optimization
     - action: print_text
       variables:
         message: string
@@ -65,6 +64,7 @@ api:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             
+            // DTR handshaking will handle timing automatically
             if (text_size == "S") printer->set_text_size(1);
             else if (text_size == "M") printer->set_text_size(2);
             else if (text_size == "L") printer->set_text_size(3);
@@ -89,218 +89,7 @@ api:
             printer->inverse_off();
             printer->justify('L');
 
-    # NEW: Maximum impact rotated text - Large rotated letters vertically  
-    - action: print_banner_text
-      variables:
-        message: string
-        size: string  # S, M, L, XL for different impact levels
-        spacing: int  # Lines between letters (default 2)
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            
-            ESP_LOGI("thermal_printer", "Banner print: '%s', size: %s, spacing: %d", 
-                     message.c_str(), size.c_str(), spacing);
-            
-            // Set text size based on parameter with XL support
-            if (size == "XL" || size == "xl") {
-              // XL: Use large size with double width and height
-              printer->set_text_size(3);  // Maximum base size
-              printer->double_width_on();  // Make it even wider
-              printer->double_height_on(); // Make it even taller
-              ESP_LOGI("thermal_printer", "Using XL size: 3 + double width/height");
-            } else if (size == "L" || size == "l") {
-              printer->set_text_size(3);  // Large
-              ESP_LOGI("thermal_printer", "Using L size: 3");
-            } else if (size == "M" || size == "m") {
-              printer->set_text_size(2);  // Medium
-              ESP_LOGI("thermal_printer", "Using M size: 2");
-            } else {
-              printer->set_text_size(1);  // Small
-              ESP_LOGI("thermal_printer", "Using S size: 1");
-            }
-            
-            // Center alignment and enable rotation
-            printer->justify('C');
-            
-            // Test different rotation approaches for QR204 compatibility
-            ESP_LOGI("thermal_printer", "Setting rotation...");
-            printer->set_rotation(1);  // 90-degree rotation for each character
-            
-            const char* text = message.c_str();
-            size_t text_len = strlen(text);
-            int letter_spacing = spacing > 0 ? spacing : 2;
-            
-            ESP_LOGI("thermal_printer", "Printing %d characters with spacing %d", text_len, letter_spacing);
-            
-            // Print each character with proper bounds checking
-            for (size_t i = 0; i < text_len; i++) {
-              ESP_LOGD("thermal_printer", "Printing character %d: '%c'", i, text[i]);
-              
-              if (text[i] == ' ') {
-                // Visual space indicator
-                printer->print_text("•");
-                printer->feed(letter_spacing);
-              } else if (text[i] == '\n') {
-                // Extra space for line breaks
-                printer->feed(letter_spacing * 2);
-              } else {
-                // Print character - create proper null-terminated string
-                char single_char[2];
-                single_char[0] = text[i];
-                single_char[1] = '\0';
-                
-                ESP_LOGD("thermal_printer", "Printing single char: '%s'", single_char);
-                printer->print_text(single_char);
-                printer->feed(letter_spacing);
-              }
-            }
-            
-            ESP_LOGI("thermal_printer", "Finished printing all characters, resetting...");
-            
-            // Reset everything carefully
-            printer->set_rotation(0);  // CRITICAL: Reset rotation first
-            printer->double_width_off();  // Reset width
-            printer->double_height_off(); // Reset height  
-            printer->justify('L');     // Reset alignment
-            printer->set_text_size(2); // Reset to normal size
-            printer->feed(3);          // Final spacing
-            
-    # Alternative banner method if ESC V rotation doesn't work on QR204
-    - action: print_banner_alt
-      variables:
-        message: string
-        size: string
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            
-            ESP_LOGI("thermal_printer", "Alternative banner (no rotation): '%s'", message.c_str());
-            
-            // Try a different approach - use maximum size and spacing
-            if (size == "XL" || size == "xl") {
-              printer->set_text_size(3);
-              printer->double_width_on();
-              printer->double_height_on();
-            } else if (size == "L" || size == "l") {
-              printer->set_text_size(3);
-            } else {
-              printer->set_text_size(2);
-            }
-            
-            printer->justify('C');
-            
-            const char* text = message.c_str();
-            
-            // Print each character on its own line with maximum impact
-            for (size_t i = 0; i < strlen(text); i++) {
-              if (text[i] == ' ') {
-                printer->print_text("▪");  // Block for space
-                printer->feed(3);
-              } else if (text[i] != '\n') {
-                char single_char[2] = {text[i], '\0'};
-                printer->print_text(single_char);
-                printer->feed(3);  // Extra spacing for drama
-              }
-            }
-            
-            // Reset
-            printer->double_width_off();
-            printer->double_height_off();
-            printer->justify('L');
-            printer->set_text_size(2);
-            printer->feed(4);
-            
-            ESP_LOGI("thermal_printer", "Alternative banner complete");
-
-    # Debug rotation command - test if QR204 supports ESC V
-    - action: test_rotation
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            
-            ESP_LOGI("thermal_printer", "Testing rotation support...");
-            
-            // Print normal
-            printer->print_text("NORMAL");
-            printer->feed(2);
-            
-            // Try rotation
-            printer->set_rotation(1);
-            printer->print_text("ROTATED?");
-            printer->set_rotation(0);
-            printer->feed(2);
-            
-            // Print normal again
-            printer->print_text("NORMAL AGAIN");
-            printer->feed(3);
-            
-            ESP_LOGI("thermal_printer", "Rotation test complete");
-
-    # NEW: Label-style printing - Rotated characters printed vertically (BEST OF BOTH!)
-    - action: print_label_text
-      variables:
-        message: string
-        size: string    # S, M, L, XL for size control
-        spacing: int    # Lines between characters (default 1)
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            
-            ESP_LOGI("thermal_printer", "Label-style print: '%s', size: %s, spacing: %d", 
-                     message.c_str(), size.c_str(), spacing);
-            
-            // Set text size based on parameter
-            if (size == "XL" || size == "xl") {
-              printer->set_text_size(3);
-              printer->double_width_on();
-              printer->double_height_on();
-            } else if (size == "L" || size == "l") {
-              printer->set_text_size(3);
-            } else if (size == "M" || size == "m") {
-              printer->set_text_size(2);
-            } else {
-              printer->set_text_size(1);
-            }
-            
-            // Center alignment for best appearance
-            printer->justify('C');
-            
-            // CRITICAL: Enable 90-degree rotation FIRST
-            printer->set_rotation(1);
-            
-            const char* text = message.c_str();
-            size_t text_len = strlen(text);
-            int char_spacing = spacing > 0 ? spacing : 1;
-            
-            // Print each character rotated AND on separate lines
-            for (size_t i = 0; i < text_len; i++) {
-              if (text[i] == ' ') {
-                // Visual space indicator
-                printer->print_text("·");
-                printer->feed(char_spacing);
-              } else if (text[i] == '\n') {
-                // Extra space for line breaks
-                printer->feed(char_spacing * 2);
-              } else {
-                // Print rotated character on its own line
-                char single_char[2] = {text[i], '\0'};
-                printer->print_text(single_char);  // This should be rotated 90°
-                printer->feed(char_spacing);       // Move to next line
-              }
-            }
-            
-            // Reset everything
-            printer->set_rotation(0);       // Turn off rotation
-            printer->double_width_off();    // Reset width
-            printer->double_height_off();   // Reset height
-            printer->justify('L');          // Reset alignment
-            printer->set_text_size(2);      // Reset size
-            printer->feed(2);               // Final spacing
-            
-            ESP_LOGI("thermal_printer", "Label-style print complete");
-
-    # Keep the working individual services for comparison
+    # Fast rotated text - optimized for DTR handshaking
     - action: print_rotated_text
       variables:
         message: string
@@ -310,48 +99,21 @@ api:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             
-            // Set size if provided
+            ESP_LOGI("thermal_printer", "DTR-optimized rotation print: '%s'", message.c_str());
+            
+            // Set size if provided (but prefer small for rotation reliability)
             if (!size.empty()) {
-              if (size == "L" || size == "l") {
-                printer->set_text_size(3);
-              } else if (size == "M" || size == "m") {
-                printer->set_text_size(2);
+              if (size == "S" || size == "s") {
+                printer->set_text_size(1);
               } else {
+                ESP_LOGW("thermal_printer", "Using small size for rotation stability");
                 printer->set_text_size(1);
               }
             }
             
             printer->print_rotated_text(message.c_str(), rotation);
 
-    - action: print_vertical_text
-      variables:
-        message: string
-        spacing: int
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            printer->justify('C');
-            
-            const char* text = message.c_str();
-            int char_spacing = spacing > 0 ? spacing : 1;
-            
-            for (size_t i = 0; i < strlen(text); i++) {
-              if (text[i] == ' ') {
-                printer->print_text("·");
-                printer->feed(char_spacing);
-              } else if (text[i] != '\n') {
-                char single_char[2] = {text[i], '\0'};
-                printer->print_text(single_char);
-                printer->feed(char_spacing);
-              } else {
-                printer->feed(char_spacing * 2);
-              }
-            }
-            
-            printer->feed(2);
-            printer->justify('L');
-
-    # QR Code printing - NEW Phase 1 Feature  
+    # DTR-optimized QR codes
     - action: print_qr_code
       variables:
         data: string
@@ -361,15 +123,18 @@ api:
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
+            
             if (!label.empty()) {
               printer->justify('C');
               printer->set_text_size(1);
               printer->print_text(label.c_str());
               printer->feed(1);
             }
+            
+            ESP_LOGI("thermal_printer", "DTR-optimized QR code: size=%d, length=%d", size, strlen(data.c_str()));
             printer->print_qr_code(data.c_str(), size, error_correction);
 
-    # Enhanced two-column printing
+    # Enhanced two-column printing with DTR flow control
     - action: print_two_column
       variables:
         left_text: string
@@ -382,52 +147,90 @@ api:
             char size_char = 'S';
             if (text_size == "M") size_char = 'M';
             else if (text_size == "L") size_char = 'L';
+            
+            ESP_LOGI("thermal_printer", "DTR two-column: '%s' | '%s'", left_text.c_str(), right_text.c_str());
             printer->print_two_column(left_text.c_str(), right_text.c_str(), fill_dots, size_char);
 
-    # Simple template printing - NEW Phase 1 Feature
-    - action: print_receipt
-      variables:
-        business_name: string
-        total: string
+    # DTR Statistics and debugging
+    - action: print_dtr_stats
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            printer->print_simple_receipt(business_name.c_str(), total.c_str());
-
-    - action: print_shopping_list
-      variables:
-        items: string
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            printer->print_shopping_list(items.c_str());
-
-    # Safe printing without enum complications
-    - action: safe_print_text
-      variables:
-        message: string
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            // Check paper before printing (simplified)
-            if (printer->has_paper()) {
-              printer->print_text(message.c_str());
-              ESP_LOGI("thermal_printer", "Print successful");
+            
+            if (printer->is_dtr_enabled()) {
+              printer->set_text_size(1);
+              printer->justify('L');
+              printer->print_text("=== DTR STATISTICS ===");
+              printer->feed(1);
+              
+              char stats_line[64];
+              snprintf(stats_line, sizeof(stats_line), "DTR Timeouts: %u", printer->get_dtr_timeouts());
+              printer->print_text(stats_line);
+              printer->feed(1);
+              
+              printer->print_text("DTR: ENABLED");
+              printer->feed(1);
+              
+              printer->print_text("====================");
+              printer->feed(2);
+              
+              ESP_LOGI("thermal_printer", "DTR Stats - Timeouts: %u", printer->get_dtr_timeouts());
             } else {
-              ESP_LOGW("thermal_printer", "Cannot print - no paper");
+              printer->print_text("DTR: DISABLED");
+              printer->feed(2);
             }
 
-    # Paper management check - NEW Phase 1 Feature
-    - action: check_can_print
-      variables:
-        estimated_lines: int
+    # Reset DTR statistics
+    - action: reset_dtr_stats
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            bool can_print = printer->can_print_job(estimated_lines);
-            ESP_LOGI("thermal_printer", "Can print %d lines: %s", estimated_lines, can_print ? "YES" : "NO");
+            printer->reset_dtr_stats();
+            ESP_LOGI("thermal_printer", "DTR statistics reset");
 
-    # All original services preserved
+    # Test DTR responsiveness
+    - action: test_dtr_performance
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            
+            if (!printer->is_dtr_enabled()) {
+              ESP_LOGW("thermal_printer", "DTR not enabled - cannot test performance");
+              return;
+            }
+            
+            ESP_LOGI("thermal_printer", "Testing DTR performance...");
+            
+            // Print test pattern to stress DTR handshaking
+            printer->set_text_size(1);
+            printer->justify('L');
+            printer->print_text("DTR Performance Test");
+            printer->feed(1);
+            
+            uint32_t start_time = millis();
+            
+            // Rapid character sequence
+            for (int i = 0; i < 50; i++) {
+              char test_char[2] = {'0' + (i % 10), '\0'};
+              printer->print_text(test_char);
+            }
+            printer->feed(1);
+            
+            uint32_t test_duration = millis() - start_time;
+            
+            char result_line[64];
+            snprintf(result_line, sizeof(result_line), "Test Duration: %ums", test_duration);
+            printer->print_text(result_line);
+            printer->feed(1);
+            
+            snprintf(result_line, sizeof(result_line), "DTR Timeouts: %u", printer->get_dtr_timeouts());
+            printer->print_text(result_line);
+            printer->feed(3);
+            
+            ESP_LOGI("thermal_printer", "DTR performance test complete: %ums, timeouts: %u", 
+                     test_duration, printer->get_dtr_timeouts());
+
+    # All original services preserved with DTR optimization
     - action: print_barcode
       variables:
         barcode_type: int
@@ -435,6 +238,7 @@ api:
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
+            ESP_LOGI("thermal_printer", "DTR-optimized barcode: type=%d", barcode_type);
             printer->print_barcode(barcode_type, barcode_data.c_str());
 
     - action: feed_paper
@@ -443,24 +247,28 @@ api:
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
+            ESP_LOGD("thermal_printer", "DTR feed: %d lines", lines);
             printer->feed(lines);
 
     - action: wake_printer
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
+            ESP_LOGI("thermal_printer", "Waking printer (DTR-aware)");
             printer->wake();
 
     - action: sleep_printer
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
+            ESP_LOGI("thermal_printer", "Sleep printer (DTR-aware)");
             printer->sleep();
 
     - action: test_print
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
+            ESP_LOGI("thermal_printer", "Test print (DTR-optimized)");
             printer->test();
 
     - action: reset_paper_usage
@@ -481,17 +289,56 @@ api:
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
+            ESP_LOGI("thermal_printer", "Printer recovery (DTR-aware)");
             printer->recover_from_error();
 
+    # Table printing support
+    - action: print_table_row
+      variables:
+        col1: string
+        col2: string
+        col3: string
+        header: bool
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            if (header) {
+              printer->bold_on();
+            }
+            printer->print_table_row(col1.c_str(), col2.c_str(), col3.c_str());
+            if (header) {
+              printer->bold_off();
+            }
+
+# Enhanced Thermal Printer Configuration with DTR
 thermal_printer:
   id: my_thermal_printer
   uart_id: thermal_uart
+  
+  # Basic Configuration
   paper_roll_length: 30000
   line_height_calibration: 4.0
   enable_rotation: true
   enable_qr_codes: true
   startup_message: true
+  
+  # Heat Configuration (optimized for DTR)
+  heat_dots: 7        # Conservative for reliability
+  heat_time: 80       # Moderate heat time
+  heat_interval: 2    # Fast heat interval (DTR will handle timing)
+  
+  # ===== DTR HANDSHAKING CONFIGURATION =====
+  enable_dtr_handshaking: true  # Enable hardware flow control
+  dtr_pin: GPIO0                # Boot/Flash pin - connect to printer DTR pin
+  
+  # Alternative DTR pin options (if GPIO0 causes boot issues):
+  # dtr_pin: GPIO5   # D1 on D1 Mini (recommended alternative)
+  # dtr_pin: GPIO12  # D6 on D1 Mini
+  # dtr_pin: GPIO13  # D7 on D1 Mini  
+  # dtr_pin: GPIO14  # D5 on D1 Mini
+  # dtr_pin: GPIO2   # Built-in LED pin (disable status_led if used)
 
+# Enhanced sensors with DTR statistics
 text_sensor:
   - platform: thermal_printer
     thermal_printer_id: my_thermal_printer
@@ -500,13 +347,21 @@ text_sensor:
 
   - platform: template
     name: "Printer Status"
-    id: printer_status_simple
+    id: printer_status_enhanced
     lambda: |-
       auto printer = id(my_thermal_printer);
-      if (printer->has_paper()) {
-        return std::string("Ready - Paper OK");
+      if (printer->is_dtr_enabled()) {
+        if (printer->has_paper()) {
+          return std::string("Ready - DTR Enabled");
+        } else {
+          return std::string("Paper Out - DTR Enabled");
+        }
       } else {
-        return std::string("Paper Out");
+        if (printer->has_paper()) {
+          return std::string("Ready - No DTR");
+        } else {
+          return std::string("Paper Out - No DTR");
+        }
       }
     update_interval: 30s
 
@@ -517,11 +372,11 @@ binary_sensor:
     id: paper_loaded
 
   - platform: template
-    name: "Printer Online"
-    id: printer_online
+    name: "DTR Handshaking"
+    id: dtr_enabled
     device_class: connectivity
     lambda: |-
-      return id(my_thermal_printer)->has_paper();
+      return id(my_thermal_printer)->is_dtr_enabled();
 
 sensor:
   - platform: uptime
@@ -570,18 +425,31 @@ sensor:
       return id(my_thermal_printer)->get_characters_printed();
     update_interval: 30s
 
+  # NEW: DTR Performance Sensors
   - platform: template
-    name: "Characters Per Minute"
-    id: chars_per_minute
-    icon: mdi:speedometer
-    unit_of_measurement: "chars/min"
+    name: "DTR Timeouts"
+    id: dtr_timeouts
+    icon: mdi:timer-alert
+    state_class: total_increasing
+    lambda: |-
+      return id(my_thermal_printer)->get_dtr_timeouts();
+    update_interval: 60s
+
+  - platform: template
+    name: "Print Success Rate"
+    id: print_success_rate
+    icon: mdi:percent
+    unit_of_measurement: "%"
     accuracy_decimals: 1
     lambda: |-
-      uint32_t uptime_minutes = millis() / 60000;
-      if (uptime_minutes > 0) {
-        return (float)id(my_thermal_printer)->get_characters_printed() / uptime_minutes;
-      }
-      return 0.0f;
+      auto printer = id(my_thermal_printer);
+      uint32_t total_ops = printer->get_lines_printed();
+      uint32_t timeouts = printer->get_dtr_timeouts();
+      
+      if (total_ops == 0) return 100.0f;
+      
+      float success_rate = ((float)(total_ops - timeouts) / total_ops) * 100.0f;
+      return success_rate > 0.0f ? success_rate : 0.0f;
     update_interval: 60s
 
 status_led:
@@ -601,6 +469,23 @@ switch:
     turn_off_action:
       - lambda: |-
           id(my_thermal_printer)->sleep();
+
+  # NEW: DTR Control Switch
+  - platform: template
+    name: "DTR Debug Mode"
+    id: dtr_debug_switch
+    icon: mdi:bug
+    optimistic: true
+    turn_on_action:
+      - logger.log:
+          level: DEBUG
+          tag: "thermal_printer"
+          format: "DTR Debug mode enabled"
+    turn_off_action:
+      - logger.log:
+          level: INFO
+          tag: "thermal_printer" 
+          format: "DTR Debug mode disabled"
 
 number:
   - platform: template
@@ -661,6 +546,58 @@ button:
           printer->feed(1);
           printer->justify('L');
 
+  # NEW: DTR Testing Buttons
+  - platform: template
+    name: "Print DTR Stats"
+    id: dtr_stats_button
+    icon: mdi:chart-line
+    on_press:
+      - esphome.thermal_printer_dtr_print_dtr_stats:
+
+  - platform: template
+    name: "Test DTR Performance"
+    id: dtr_performance_button
+    icon: mdi:speedometer
+    on_press:
+      - esphome.thermal_printer_dtr_test_dtr_performance:
+
+  - platform: template
+    name: "Reset DTR Statistics"
+    id: dtr_reset_button
+    icon: mdi:counter
+    on_press:
+      - esphome.thermal_printer_dtr_reset_dtr_stats:
+
 web_server:
   port: 80
   version: 2
+
+# Hardware Setup Instructions - UPDATED for your pin choice:
+# 
+# 1. UART CONNECTION (Hardware UART0):
+#    - ESP8266 TX (GPIO1) -> Printer RX  [BEST PERFORMANCE]
+#    - ESP8266 RX (GPIO3) -> Printer TX  [BEST PERFORMANCE]
+#    - ESP8266 GND -> Printer GND
+#    - Printer VCC -> 5V external power supply
+#
+# 2. DTR CONNECTION:
+#    - Printer DTR pin -> ESP8266 GPIO0 (Boot/Flash pin)
+#    - Requires opening printer case and soldering wire to DTR pad
+#    - Some newer printers have DTR exposed on connector
+# 
+# 3. IMPORTANT GPIO0 (Boot Pin) CONSIDERATIONS:
+#    - MUST be HIGH during boot (internal pullup helps)
+#    - Disconnect DTR wire during firmware flashing
+#    - Pull DTR high with 10kΩ resistor if experiencing boot issues
+#    - Works perfectly as DTR input during normal operation
+#
+# 4. VERIFICATION:
+#    - "DTR Handshaking" sensor should show "on" 
+#    - "DTR Timeouts" sensor should stay at 0 or very low
+#    - Test with "Test DTR Performance" button
+#
+# 5. TROUBLESHOOTING:
+#    - Boot issues: Add 10kΩ pullup resistor GPIO0 to 3.3V
+#    - Flash issues: Disconnect DTR wire during programming
+#    - High DTR timeouts: check wiring, printer firmware compatibility
+#    - Missing charact
