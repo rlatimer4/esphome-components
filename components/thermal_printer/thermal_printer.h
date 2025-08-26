@@ -3,6 +3,7 @@
 #include "esphome/core/component.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/log.h"
+#include "esphome/core/gpio.h"
 
 namespace esphome {
 namespace thermal_printer {
@@ -42,14 +43,15 @@ enum BarCodeType {
   CODE128 = 8
 };
 
-// Phase 1: Enhanced result types and status structures
+// Enhanced result types and status structures
 enum class PrintResult {
   SUCCESS,
   PAPER_OUT,
   COVER_OPEN,
   COMMUNICATION_ERROR,
   INSUFFICIENT_PAPER,
-  PRINTER_OFFLINE
+  PRINTER_OFFLINE,
+  DTR_TIMEOUT  // NEW: DTR handshaking timeout
 };
 
 struct PrinterStatus {
@@ -57,8 +59,10 @@ struct PrinterStatus {
   bool cover_open;
   bool cutter_error;
   bool printer_online;
+  bool dtr_ready;          // NEW: DTR handshaking status
   float temperature_estimate;
   uint32_t last_response_time;
+  uint32_t dtr_timeouts;   // NEW: Count of DTR timeouts
 };
 
 class ThermalPrinterComponent : public Component, public uart::UARTDevice, public Print {
@@ -105,52 +109,62 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   void online();
   void set_heat_config(uint8_t dots, uint8_t time, uint8_t interval);
 
-  // Original ESPHome specific methods
+  // Enhanced ESPHome specific methods
   void print_text(const char *text);
   void print_two_column(const char *left_text, const char *right_text, bool fill_dots = true, char text_size = 'S');
   void print_table_row(const char *col1, const char *col2, const char *col3 = nullptr);
   bool has_paper();
   void set_paper_check_callback(std::function<void(bool)> &&callback);
   
-  // Original paper usage estimation
+  // Paper usage estimation
   float get_paper_usage_mm();
-  float get_paper_usage_percent(); // Based on 30m roll
+  float get_paper_usage_percent(); 
   void reset_paper_usage();
   uint32_t get_lines_printed();
   uint32_t get_characters_printed();
-  void set_paper_roll_length(float length_mm); // Default 30000mm (30m)
+  void set_paper_roll_length(float length_mm); 
   void set_line_height_calibration(float mm_per_line);
 
-  // ===== PHASE 1: NEW ENHANCED METHODS =====
-  
-  // 90-Degree Rotation Support
+  // Enhanced methods with DTR support
   void set_rotation(uint8_t rotation);
   void print_rotated_text(const char* text, uint8_t rotation = 1);
-  
-  // QR Code Generation
   void print_qr_code(const char* data, uint8_t size = 3, uint8_t error_correction = 1);
-  
-  // Enhanced Error Handling
   PrintResult safe_print_text(const char* text);
   bool get_detailed_status(PrinterStatus* status);
-  
-  // Smart Paper Management
   bool can_print_job(uint16_t estimated_lines);
   uint16_t estimate_lines_for_text(const char* text);
   float predict_paper_usage_for_job(const char* text, uint8_t text_size);
-  
-  // Advanced Heat Configuration
   void set_heat_config_advanced(uint8_t dots, uint8_t time, uint8_t interval, uint8_t density = 4);
-  
-  // Template Printing (Simplified)
   void print_simple_receipt(const char* business_name, const char* total);
   void print_shopping_list(const char* items_string);
-  
-  // System Management
   bool validate_config();
   void print_startup_message();
   void recover_from_error();
   void log_performance_stats();
+
+  // ===== NEW: DTR HANDSHAKING METHODS =====
+  
+  // Configuration methods
+  void set_dtr_pin(InternalGPIOPin *pin) { this->dtr_pin_ = pin; }
+  void enable_dtr_handshaking(bool enable) { this->dtr_enabled_ = enable; }
+  void set_heat_dots(uint8_t dots) { this->heat_dots_ = dots; }
+  void set_heat_time(uint8_t time) { this->heat_time_ = time; }
+  void set_heat_interval(uint8_t interval) { this->heat_interval_ = interval; }
+  
+  // DTR handshaking core functions
+  void timeout_wait();
+  void timeout_set(uint32_t delay_microseconds);
+  bool dtr_ready();
+  void wait_for_printer_ready(uint32_t timeout_ms = 5000);
+  
+  // DTR statistics and debugging
+  uint32_t get_dtr_timeouts() { return this->dtr_timeout_count_; }
+  void reset_dtr_stats() { this->dtr_timeout_count_ = 0; }
+  bool is_dtr_enabled() { return this->dtr_enabled_ && this->dtr_pin_ != nullptr; }
+  
+  // Enhanced write methods with DTR flow control
+  void write_byte_with_flow_control(uint8_t byte);
+  void write_bytes_with_flow_control(const uint8_t *data, size_t length);
 
  protected:
   uint32_t last_paper_check_{0};
@@ -162,7 +176,28 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   uint32_t characters_printed_{0};
   uint32_t feeds_executed_{0};
   float paper_roll_length_{30000.0}; // 30 meters in mm
-  float line_height_mm_{4.0}; // ~4.0mm per line for thermal paper (more realistic)
+  float line_height_mm_{4.0}; 
+
+  // Heat configuration storage
+  uint8_t heat_dots_{7};
+  uint8_t heat_time_{80};
+  uint8_t heat_interval_{2};
+
+  // ===== NEW: DTR HANDSHAKING VARIABLES =====
+  InternalGPIOPin *dtr_pin_{nullptr};
+  bool dtr_enabled_{false};
+  uint32_t resume_time_micros_{0};
+  uint32_t dtr_timeout_count_{0};
+  
+  // Timing constants for DTR (based on Adafruit library calculations)
+  uint32_t byte_time_micros_{416};    // Time per byte at 19200 baud: 1000000/19200*10 ≈ 520us, reduced for safety
+  uint32_t dot_print_time_micros_{33}; // Time to print one pixel line
+  uint32_t dot_feed_time_micros_{333}; // Time to feed one pixel line
+  
+  // Performance tracking
+  uint32_t total_bytes_sent_{0};
+  uint32_t dtr_waits_{0};
+  uint32_t timeout_waits_{0};
 
   // Helper methods for paper tracking
   void track_print_operation(uint16_t chars, uint8_t lines = 0, uint8_t feeds = 0);
@@ -178,8 +213,10 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   void write_bytes(uint8_t a, uint8_t b, uint8_t c);
   void write_bytes(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
   
-  // For QR codes and complex commands, use individual write_byte calls
-  // instead of trying to extend write_bytes with more parameters
+  // ===== DTR HELPER METHODS =====
+  void initialize_dtr_timings();
+  void update_performance_stats();
+  uint32_t calculate_operation_time_micros(uint8_t operation_type, uint8_t data_length = 1);
 };
 
 }  // namespace thermal_printer
