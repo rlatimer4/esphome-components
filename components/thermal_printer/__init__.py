@@ -25,11 +25,17 @@ CONF_STARTUP_MESSAGE = "startup_message"
 CONF_ENABLE_ROTATION = "enable_rotation"
 CONF_ENABLE_QR_CODES = "enable_qr_codes"
 
-# NEW: DTR Handshaking Configuration
+# DTR Handshaking Configuration
 CONF_DTR_PIN = "dtr_pin"
 CONF_ENABLE_DTR = "enable_dtr_handshaking"
 
-# Enhanced configuration schema with DTR support
+# NEW: Queue System Configuration
+CONF_ENABLE_QUEUE = "enable_queue_system"
+CONF_MAX_QUEUE_SIZE = "max_queue_size"
+CONF_PRINT_DELAY = "print_delay_ms"
+CONF_AUTO_PROCESS_QUEUE = "auto_process_queue"
+
+# Enhanced configuration schema with DTR and Queue support
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
@@ -56,9 +62,15 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_ENABLE_QR_CODES, default=True): cv.boolean,
             cv.Optional(CONF_STARTUP_MESSAGE, default=True): cv.boolean,
             
-            # NEW: DTR Handshaking (Hardware Flow Control)
+            # DTR Handshaking (Hardware Flow Control)
             cv.Optional(CONF_ENABLE_DTR, default=False): cv.boolean,
             cv.Optional(CONF_DTR_PIN): pins.internal_gpio_input_pin_schema,
+            
+            # NEW: Queue System Configuration
+            cv.Optional(CONF_ENABLE_QUEUE, default=True): cv.boolean,
+            cv.Optional(CONF_MAX_QUEUE_SIZE, default=10): cv.int_range(min=2, max=50),
+            cv.Optional(CONF_PRINT_DELAY, default=2000): cv.int_range(min=500, max=10000),
+            cv.Optional(CONF_AUTO_PROCESS_QUEUE, default=True): cv.boolean,
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -116,16 +128,32 @@ def validate_dtr_settings(config):
     
     return config
 
+def validate_queue_settings(config):
+    """Validate queue system configuration"""
+    enable_queue = config.get(CONF_ENABLE_QUEUE, True)
+    max_queue_size = config.get(CONF_MAX_QUEUE_SIZE, 10)
+    print_delay = config.get(CONF_PRINT_DELAY, 2000)
+    
+    if enable_queue:
+        if max_queue_size < 2:
+            raise cv.Invalid("Queue size must be at least 2 jobs")
+        
+        if print_delay < 500:
+            raise cv.Invalid("Print delay must be at least 500ms to prevent printer overload")
+    
+    return config
+
 # Apply all validation functions
 CONFIG_SCHEMA = cv.All(
     CONFIG_SCHEMA,
     validate_heat_settings,
     validate_paper_settings,
-    validate_dtr_settings
+    validate_dtr_settings,
+    validate_queue_settings
 )
 
 async def to_code(config):
-    """Generate the component code with DTR handshaking support"""
+    """Generate the component code with DTR handshaking and queue system support"""
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
@@ -147,11 +175,17 @@ async def to_code(config):
     if CONF_HEAT_INTERVAL in config:
         cg.add(var.set_heat_interval(config[CONF_HEAT_INTERVAL]))
     
-    # NEW: DTR Handshaking Configuration
+    # DTR Handshaking Configuration
     if config.get(CONF_ENABLE_DTR, False):
         dtr_pin = await cg.gpio_pin_expression(config[CONF_DTR_PIN])
         cg.add(var.set_dtr_pin(dtr_pin))
         cg.add(var.enable_dtr_handshaking(True))
+    
+    # NEW: Queue System Configuration
+    if config.get(CONF_ENABLE_QUEUE, True):
+        cg.add(var.set_max_queue_size(config.get(CONF_MAX_QUEUE_SIZE, 10)))
+        cg.add(var.set_print_delay(config.get(CONF_PRINT_DELAY, 2000)))
+        cg.add(var.enable_auto_queue_processing(config.get(CONF_AUTO_PROCESS_QUEUE, True)))
     
     # Add compile-time definitions
     cg.add_define("THERMAL_PRINTER_PAPER_WIDTH", config.get(CONF_PAPER_WIDTH, 58))
@@ -166,3 +200,6 @@ async def to_code(config):
     
     if config.get(CONF_ENABLE_DTR, False):
         cg.add_define("THERMAL_PRINTER_ENABLE_DTR")
+    
+    if config.get(CONF_ENABLE_QUEUE, True):
+        cg.add_define("THERMAL_PRINTER_ENABLE_QUEUE")
