@@ -22,7 +22,7 @@ static const char *const TAG = "thermal_printer";
 static const uint32_t PAPER_USAGE_HASH = 0x12345678;
 
 void ThermalPrinterComponent::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up Thermal Printer with DTR...");
+  ESP_LOGCONFIG(TAG, "Setting up Enhanced Thermal Printer with Queue System...");
   
   // Initialize DTR pin if configured
   if (this->dtr_pin_ != nullptr) {
@@ -51,11 +51,18 @@ void ThermalPrinterComponent::setup() {
   // Initial paper check
   this->paper_status_ = this->has_paper();
   
-  ESP_LOGCONFIG(TAG, "Printer setup complete - DTR: %s", 
+  ESP_LOGCONFIG(TAG, "Printer setup complete - DTR: %s, Queue: ENABLED", 
                 this->is_dtr_enabled() ? "ENABLED" : "Disabled");
+  ESP_LOGCONFIG(TAG, "Queue settings: max_size=%d, delay=%dms", 
+                this->max_queue_size_, this->print_delay_ms_);
 }
 
 void ThermalPrinterComponent::loop() {
+  // ===== NEW: PROCESS PRINT QUEUE =====
+  if (this->auto_process_queue_) {
+    this->process_print_queue();
+  }
+  
   // Check paper status periodically
   if (millis() - this->last_paper_check_ > 10000) {
     this->last_paper_check_ = millis();
@@ -70,12 +77,267 @@ void ThermalPrinterComponent::loop() {
 }
 
 void ThermalPrinterComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "Thermal Printer:");
+  ESP_LOGCONFIG(TAG, "Enhanced Thermal Printer with Queue System:");
   ESP_LOGCONFIG(TAG, "  DTR: %s", this->is_dtr_enabled() ? "ENABLED" : "Disabled");
   if (this->is_dtr_enabled()) {
     ESP_LOGCONFIG(TAG, "  DTR Pin: GPIO%d", this->dtr_pin_->get_pin());
     ESP_LOGCONFIG(TAG, "  DTR Timeouts: %u", this->dtr_timeout_count_);
   }
+  ESP_LOGCONFIG(TAG, "  Queue Size: %d/%d", this->get_queue_length(), this->max_queue_size_);
+  ESP_LOGCONFIG(TAG, "  Print Delay: %dms", this->print_delay_ms_);
+  ESP_LOGCONFIG(TAG, "  Auto Process: %s", this->auto_process_queue_ ? "ON" : "OFF");
+  ESP_LOGCONFIG(TAG, "  Jobs Processed: %u", this->total_jobs_processed_);
+  ESP_LOGCONFIG(TAG, "  Jobs Dropped: %u", this->jobs_dropped_);
+}
+
+// ===== QUEUE MANAGEMENT METHODS =====
+
+PrintResult ThermalPrinterComponent::queue_print_job(const PrintJob& job) {
+  // Check if queue is full
+  if (this->print_queue_.size() >= this->max_queue_size_) {
+    ESP_LOGW(TAG, "Print queue full (%d jobs), dropping oldest job", this->max_queue_size_);
+    this->print_queue_.pop();
+    this->jobs_dropped_++;
+  }
+  
+  // Add timestamp
+  PrintJob queued_job = job;
+  queued_job.timestamp = millis();
+  
+  // Add to queue (priority queue could be implemented here)
+  this->print_queue_.push(queued_job);
+  
+  ESP_LOGI(TAG, "Print job queued (type: %d, priority: %d, queue size: %d)", 
+           job.type, job.priority, this->print_queue_.size());
+  
+  return PrintResult::SUCCESS;
+}
+
+void ThermalPrinterComponent::process_print_queue() {
+  // Don't process if conditions aren't met
+  if (!this->should_process_queue()) {
+    return;
+  }
+  
+  if (this->print_queue_.empty()) {
+    return;
+  }
+  
+  // Mark printer as busy
+  this->printer_busy_ = true;
+  this->current_job_start_time_ = millis();
+  
+  // Get next job
+  PrintJob job = this->print_queue_.front();
+  this->print_queue_.pop();
+  
+  ESP_LOGI(TAG, "Processing print job (type: %d, queue remaining: %d)", 
+           job.type, this->print_queue_.size());
+  
+  // Execute the job
+  this->execute_print_job(job);
+  
+  // Update timing and statistics
+  uint32_t job_duration = millis() - this->current_job_start_time_;
+  this->update_queue_statistics(job_duration);
+  
+  this->last_print_time_ = millis();
+  this->total_jobs_processed_++;
+  this->printer_busy_ = false;
+}
+
+bool ThermalPrinterComponent::should_process_queue() {
+  // Don't process if printer is busy
+  if (this->printer_busy_) {
+    return false;
+  }
+  
+  // Don't process if not enough time has passed since last job
+  if ((millis() - this->last_print_time_) < this->print_delay_ms_) {
+    return false;
+  }
+  
+  // Don't process if no paper
+  if (!this->has_paper()) {
+    static uint32_t last_paper_warning = 0;
+    if (millis() - last_paper_warning > 30000) { // Warn every 30 seconds
+      ESP_LOGW(TAG, "Cannot process print queue: No paper (queue size: %d)", this->print_queue_.size());
+      last_paper_warning = millis();
+    }
+    return false;
+  }
+  
+  return true;
+}
+
+void ThermalPrinterComponent::execute_print_job(const PrintJob& job) {
+  switch (job.type) {
+    case PrintJob::TEXT:
+      this->set_text_size(job.param1);
+      this->justify(job.param2 == 0 ? 'L' : (job.param2 == 1 ? 'C' : 'R'));
+      this->bold_on(job.param3);
+      this->print_text(job.data1.c_str());
+      this->bold_off();
+      this->justify('L');
+      break;
+      
+    case PrintJob::TWO_COLUMN:
+      this->print_two_column(job.data1.c_str(), job.data2.c_str(), job.param3, 
+                           job.param1 == 1 ? 'S' : (job.param1 == 2 ? 'M' : 'L'));
+      break;
+      
+    case PrintJob::BARCODE:
+      this->print_barcode(job.param1, job.data1.c_str());
+      break;
+      
+    case PrintJob::QR_CODE:
+      this->print_qr_code(job.data1.c_str(), job.param1, job.param2);
+      break;
+      
+    case PrintJob::FEED_PAPER:
+      this->feed(job.param1);
+      break;
+      
+    case PrintJob::SEPARATOR:
+      this->justify('C');
+      this->print_text("================================");
+      this->justify('L');
+      this->feed(1);
+      break;
+      
+    case PrintJob::TABLE_ROW:
+      if (job.param3) { // Header row
+        this->bold_on();
+      }
+      this->print_table_row(job.data1.c_str(), job.data2.c_str(), 
+                          job.data3.empty() ? nullptr : job.data3.c_str());
+      if (job.param3) {
+        this->bold_off();
+      }
+      break;
+      
+    case PrintJob::ROTATED_TEXT:
+      this->print_rotated_text(job.data1.c_str(), job.param1);
+      break;
+      
+    default:
+      ESP_LOGW(TAG, "Unknown job type: %d", job.type);
+      break;
+  }
+}
+
+void ThermalPrinterComponent::clear_print_queue() {
+  // Clear the queue by swapping with empty queue
+  std::queue<PrintJob> empty_queue;
+  this->print_queue_.swap(empty_queue);
+  ESP_LOGI(TAG, "Print queue cleared");
+}
+
+void ThermalPrinterComponent::update_queue_statistics(uint32_t job_duration) {
+  this->total_processing_time_ += job_duration;
+}
+
+float ThermalPrinterComponent::get_average_job_time() const {
+  if (this->total_jobs_processed_ == 0) {
+    return 0.0f;
+  }
+  return (float)this->total_processing_time_ / this->total_jobs_processed_;
+}
+
+// ===== CONVENIENCE QUEUE METHODS =====
+
+PrintResult ThermalPrinterComponent::queue_text(const char* text, uint8_t size, uint8_t align, bool bold, uint8_t priority) {
+  PrintJob job = this->create_text_job(text, size, align, bold, priority);
+  return this->queue_print_job(job);
+}
+
+PrintResult ThermalPrinterComponent::queue_two_column(const char* left, const char* right, bool dots, char size, uint8_t priority) {
+  PrintJob job;
+  job.type = PrintJob::TWO_COLUMN;
+  job.data1 = left;
+  job.data2 = right;
+  job.param1 = (size == 'S') ? 1 : (size == 'M') ? 2 : 3;
+  job.param3 = dots;
+  job.priority = priority;
+  return this->queue_print_job(job);
+}
+
+PrintResult ThermalPrinterComponent::queue_barcode(uint8_t type, const char* data, uint8_t priority) {
+  PrintJob job;
+  job.type = PrintJob::BARCODE;
+  job.data1 = data;
+  job.param1 = type;
+  job.priority = priority;
+  return this->queue_print_job(job);
+}
+
+PrintResult ThermalPrinterComponent::queue_qr_code(const char* data, uint8_t size, uint8_t error_correction, uint8_t priority) {
+  PrintJob job;
+  job.type = PrintJob::QR_CODE;
+  job.data1 = data;
+  job.param1 = size;
+  job.param2 = error_correction;
+  job.priority = priority;
+  return this->queue_print_job(job);
+}
+
+PrintResult ThermalPrinterComponent::queue_separator(uint8_t priority) {
+  PrintJob job;
+  job.type = PrintJob::SEPARATOR;
+  job.priority = priority;
+  return this->queue_print_job(job);
+}
+
+PrintResult ThermalPrinterComponent::queue_feed(uint8_t lines, uint8_t priority) {
+  PrintJob job;
+  job.type = PrintJob::FEED_PAPER;
+  job.param1 = lines;
+  job.priority = priority;
+  return this->queue_print_job(job);
+}
+
+PrintJob ThermalPrinterComponent::create_text_job(const char* text, uint8_t size, uint8_t align, bool bold, uint8_t priority) {
+  PrintJob job;
+  job.type = PrintJob::TEXT;
+  job.data1 = text;
+  job.param1 = size;
+  job.param2 = align;
+  job.param3 = bold;
+  job.priority = priority;
+  return job;
+}
+
+// ===== EMERGENCY/IMMEDIATE PRINTING =====
+
+PrintResult ThermalPrinterComponent::print_immediate(const char* text, uint8_t size, uint8_t align, bool bold) {
+  if (this->printer_busy_) {
+    ESP_LOGW(TAG, "Cannot print immediately: printer busy");
+    return PrintResult::PRINTER_OFFLINE;
+  }
+  
+  if (!this->has_paper()) {
+    ESP_LOGW(TAG, "Cannot print immediately: no paper");
+    return PrintResult::PAPER_OUT;
+  }
+  
+  ESP_LOGI(TAG, "Emergency print: %s", text);
+  
+  // Mark as busy to prevent queue processing
+  this->printer_busy_ = true;
+  
+  // Execute immediately
+  this->set_text_size(size);
+  this->justify(align == 0 ? 'L' : (align == 1 ? 'C' : 'R'));
+  this->bold_on(bold);
+  this->print_text(text);
+  this->bold_off();
+  this->justify('L');
+  
+  // Reset busy flag
+  this->printer_busy_ = false;
+  this->last_print_time_ = millis();
+  
+  return PrintResult::SUCCESS;
 }
 
 // ===== DTR METHODS =====
@@ -148,12 +410,6 @@ void ThermalPrinterComponent::write_byte_with_flow_control(uint8_t byte) {
   }
 }
 
-void ThermalPrinterComponent::write_bytes_with_flow_control(const uint8_t *data, size_t length) {
-  for (size_t i = 0; i < length; i++) {
-    this->write_byte_with_flow_control(data[i]);
-  }
-}
-
 // ===== PRINT INTERFACE =====
 
 size_t ThermalPrinterComponent::write(uint8_t c) {
@@ -212,30 +468,6 @@ void ThermalPrinterComponent::reset() {
   }
 }
 
-void ThermalPrinterComponent::test() {
-  this->print_text("Hello World!");
-  this->feed(2);
-}
-
-void ThermalPrinterComponent::test_page() {
-  this->write_byte_with_flow_control(ASCII_DC2);
-  this->write_byte_with_flow_control('T');
-  
-  if (this->is_dtr_enabled()) {
-    this->wait_for_printer_ready(10000);
-  } else {
-    delay(1000);
-  }
-  
-  this->track_print_operation(0, 10, 0);
-}
-
-void ThermalPrinterComponent::normal() {
-  this->write_byte_with_flow_control(ASCII_ESC);
-  this->write_byte_with_flow_control('!');
-  this->write_byte_with_flow_control(0);
-}
-
 void ThermalPrinterComponent::set_default() {
   this->online();
   this->justify('L');
@@ -244,6 +476,17 @@ void ThermalPrinterComponent::set_default() {
   this->underline_off();
   this->set_size('S');
   this->set_line_height();
+}
+
+void ThermalPrinterComponent::test() {
+  this->print_text("Hello World!");
+  this->feed(2);
+}
+
+void ThermalPrinterComponent::test_page() {
+  this->write_byte_with_flow_control(ASCII_DC2);
+  this->write_byte_with_flow_control('T');
+  this->track_print_operation(0, 10, 0); // Estimate test page usage
 }
 
 void ThermalPrinterComponent::set_heat_config(uint8_t dots, uint8_t time, uint8_t interval) {
@@ -286,6 +529,12 @@ void ThermalPrinterComponent::inverse_on(bool state) {
 
 void ThermalPrinterComponent::inverse_off() {
   this->inverse_on(false);
+}
+
+void ThermalPrinterComponent::normal() {
+  this->write_byte_with_flow_control(ASCII_ESC);
+  this->write_byte_with_flow_control('!');
+  this->write_byte_with_flow_control(0);
 }
 
 void ThermalPrinterComponent::double_height_on(bool state) {
@@ -391,6 +640,10 @@ void ThermalPrinterComponent::feed_rows(uint8_t rows) {
 }
 
 void ThermalPrinterComponent::print_barcode(const char *text, uint8_t type) {
+  this->print_barcode((int)type, text);
+}
+
+void ThermalPrinterComponent::print_barcode(int type, const char *text) {
   this->write_byte_with_flow_control(ASCII_GS);
   this->write_byte_with_flow_control('H');
   this->write_byte_with_flow_control(2);
@@ -399,7 +652,7 @@ void ThermalPrinterComponent::print_barcode(const char *text, uint8_t type) {
   this->write_byte_with_flow_control(3);
   this->write_byte_with_flow_control(ASCII_GS);
   this->write_byte_with_flow_control('k');
-  this->write_byte_with_flow_control(type);
+  this->write_byte_with_flow_control((uint8_t)type);
   
   for (const char *p = text; *p != 0; p++) {
     this->write_byte_with_flow_control(*p);
@@ -413,10 +666,6 @@ void ThermalPrinterComponent::print_barcode(const char *text, uint8_t type) {
   }
   
   this->track_print_operation(strlen(text), 3, 0);
-}
-
-void ThermalPrinterComponent::print_barcode(int type, const char *text) {
-  this->print_barcode(text, (uint8_t)type);
 }
 
 void ThermalPrinterComponent::online() {
@@ -678,7 +927,7 @@ PrintResult ThermalPrinterComponent::safe_print_text(const char* text) {
   uint16_t estimated_lines = this->estimate_lines_for_text(text);
   
   if (!this->can_print_job(estimated_lines)) {
-    ESP_LOGW(TAG, "Cannot print: Insufficient paper");
+    ESP_LOGW(TAG, "Cannot print: Insufficient paper (need %d lines)", estimated_lines);
     return PrintResult::INSUFFICIENT_PAPER;
   }
   
@@ -688,26 +937,16 @@ PrintResult ThermalPrinterComponent::safe_print_text(const char* text) {
   return PrintResult::SUCCESS;
 }
 
-bool ThermalPrinterComponent::get_detailed_status(PrinterStatus* status) {
-  if (!status) return false;
-  
-  status->paper_present = this->has_paper();
-  status->cover_open = false;
-  status->cutter_error = false;
-  status->printer_online = true;
-  status->dtr_ready = this->dtr_ready();
-  status->temperature_estimate = 25.0;
-  status->last_response_time = millis();
-  status->dtr_timeouts = this->dtr_timeout_count_;
-  
-  return true;
-}
-
 bool ThermalPrinterComponent::can_print_job(uint16_t estimated_lines) {
   float required_mm = estimated_lines * this->line_height_mm_;
   float remaining_mm = this->paper_roll_length_ - this->get_paper_usage_mm();
   
-  return required_mm <= remaining_mm;
+  bool can_print = required_mm <= remaining_mm;
+  
+  ESP_LOGD(TAG, "Paper check: need %.1fmm, have %.1fmm remaining", 
+           required_mm, remaining_mm);
+  
+  return can_print;
 }
 
 uint16_t ThermalPrinterComponent::estimate_lines_for_text(const char* text) {
@@ -733,6 +972,7 @@ uint16_t ThermalPrinterComponent::estimate_lines_for_text(const char* text) {
     }
   }
   
+  ESP_LOGD(TAG, "Estimated %d lines for %d characters", lines, text_len);
   return lines;
 }
 
@@ -749,7 +989,12 @@ float ThermalPrinterComponent::predict_paper_usage_for_job(const char* text, uin
     default:  size_multiplier = 1.0; break;
   }
   
-  return lines * this->line_height_mm_ * size_multiplier;
+  float estimated_mm = lines * this->line_height_mm_ * size_multiplier;
+  
+  ESP_LOGD(TAG, "Predicted paper usage: %.1fmm for %d lines (size multiplier: %.1f)", 
+           estimated_mm, lines, size_multiplier);
+  
+  return estimated_mm;
 }
 
 void ThermalPrinterComponent::set_heat_config_advanced(uint8_t dots, uint8_t time, uint8_t interval, uint8_t density) {
@@ -765,6 +1010,25 @@ void ThermalPrinterComponent::set_heat_config_advanced(uint8_t dots, uint8_t tim
   
   ESP_LOGD(TAG, "Set advanced heat config: dots=%d, time=%d, interval=%d, density=%d", 
            dots, time, interval, density);
+}
+
+bool ThermalPrinterComponent::get_detailed_status(PrinterStatus* status) {
+  if (!status) return false;
+  
+  status->paper_present = this->has_paper();
+  status->cover_open = false;
+  status->cutter_error = false;
+  status->printer_online = true;
+  status->dtr_ready = this->dtr_ready();
+  status->temperature_estimate = 25.0;
+  status->last_response_time = millis();
+  status->dtr_timeouts = this->dtr_timeout_count_;
+  
+  ESP_LOGD(TAG, "Detailed printer status: paper=%s, dtr=%s", 
+           status->paper_present ? "OK" : "OUT",
+           status->dtr_ready ? "READY" : "BUSY");
+  
+  return true;
 }
 
 void ThermalPrinterComponent::print_simple_receipt(const char* business_name, const char* total) {
@@ -879,7 +1143,7 @@ void ThermalPrinterComponent::print_startup_message() {
   this->feed(1);
   
   this->set_text_size(1);
-  this->print_text("Ready for printing!");
+  this->print_text("Queue System Ready!");
   this->feed(1);
   
   this->print_text("System Started");
@@ -893,13 +1157,16 @@ void ThermalPrinterComponent::print_startup_message() {
 void ThermalPrinterComponent::recover_from_error() {
   ESP_LOGI(TAG, "Attempting error recovery");
   
+  // Clear buffers
   while (this->available()) {
     this->read();
   }
   
+  // Reset printer
   this->reset();
   delay(1000);
   
+  // Re-initialize
   this->wake();
   delay(500);
   
@@ -920,6 +1187,8 @@ void ThermalPrinterComponent::log_performance_stats() {
   ESP_LOGI(TAG, "  Lines/minute: %.1f", lines_per_minute);
   ESP_LOGI(TAG, "  Paper efficiency: %.1f chars/mm", 
            this->get_paper_usage_mm() > 0 ? this->characters_printed_ / this->get_paper_usage_mm() : 0);
+  ESP_LOGI(TAG, "  Queue stats: processed=%u, dropped=%u, avg_time=%.1fms", 
+           this->total_jobs_processed_, this->jobs_dropped_, this->get_average_job_time());
 }
 
 // ===== HELPER METHODS =====
@@ -976,12 +1245,6 @@ void ThermalPrinterComponent::print_padded_line(const char *left, const char *ri
   this->track_print_operation(total_width + 1, 1, 0);
 }
 
-void ThermalPrinterComponent::update_performance_stats() {
-  // Performance tracking implementation
-}
-
-// ===== HELPER WRITE METHODS =====
-
 void ThermalPrinterComponent::write_bytes(uint8_t a) {
   this->write_byte_with_flow_control(a);
 }
@@ -1004,18 +1267,29 @@ void ThermalPrinterComponent::write_bytes(uint8_t a, uint8_t b, uint8_t c, uint8
   this->write_byte_with_flow_control(d);
 }
 
-uint32_t ThermalPrinterComponent::calculate_operation_time_micros(uint8_t operation_type, uint8_t data_length) {
-  // Calculate timing based on operation type
-  switch (operation_type) {
-    case 0: // Character printing
-      return this->dot_print_time_micros_ * data_length;
-    case 1: // Line feed
-      return this->dot_feed_time_micros_ * data_length;
-    case 2: // Barcode
-      return this->dot_print_time_micros_ * data_length * 8;
-    default:
-      return this->byte_time_micros_ * data_length;
-  }
+// ===== MISSING QUEUE CONFIGURATION METHODS =====
+
+void ThermalPrinterComponent::set_max_queue_size(uint8_t max_size) {
+  this->max_queue_size_ = max_size;
+  ESP_LOGI(TAG, "Max queue size set to %d", max_size);
+}
+
+void ThermalPrinterComponent::set_print_delay(uint32_t delay_ms) {
+  this->print_delay_ms_ = delay_ms;
+  ESP_LOGI(TAG, "Print delay set to %dms", delay_ms);
+}
+
+void ThermalPrinterComponent::enable_auto_queue_processing(bool enable) {
+  this->auto_process_queue_ = enable;
+  ESP_LOGI(TAG, "Auto queue processing %s", enable ? "enabled" : "disabled");
+}
+
+uint32_t ThermalPrinterComponent::get_total_jobs_processed() const {
+  return this->total_jobs_processed_;
+}
+
+uint32_t ThermalPrinterComponent::get_jobs_dropped() const {
+  return this->jobs_dropped_;
 }
 
 }  // namespace thermal_printer
