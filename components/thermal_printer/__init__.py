@@ -69,7 +69,7 @@ CONFIG_SCHEMA = cv.All(
             # NEW: Queue System Configuration
             cv.Optional(CONF_ENABLE_QUEUE, default=True): cv.boolean,
             cv.Optional(CONF_MAX_QUEUE_SIZE, default=10): cv.int_range(min=2, max=50),
-            cv.Optional(CONF_PRINT_DELAY, default=2000): cv.int_range(min=500, max=10000),
+            cv.Optional(CONF_PRINT_DELAY, default=2000): cv.int_range(min=100, max=10000),  # Allow down to 100ms
             cv.Optional(CONF_AUTO_PROCESS_QUEUE, default=True): cv.boolean,
         }
     )
@@ -133,13 +133,19 @@ def validate_queue_settings(config):
     enable_queue = config.get(CONF_ENABLE_QUEUE, True)
     max_queue_size = config.get(CONF_MAX_QUEUE_SIZE, 10)
     print_delay = config.get(CONF_PRINT_DELAY, 2000)
+    enable_dtr = config.get(CONF_ENABLE_DTR, False)
     
     if enable_queue:
         if max_queue_size < 2:
             raise cv.Invalid("Queue size must be at least 2 jobs")
         
-        if print_delay < 500:
-            raise cv.Invalid("Print delay must be at least 500ms to prevent printer overload")
+        # More lenient validation with DTR
+        if enable_dtr:
+            if print_delay < 100:
+                raise cv.Invalid("Print delay must be at least 100ms even with DTR")
+        else:
+            if print_delay < 500:
+                raise cv.Invalid("Print delay must be at least 500ms without DTR to prevent printer overload")
     
     return config
 
