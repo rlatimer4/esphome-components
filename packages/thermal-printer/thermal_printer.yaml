@@ -74,6 +74,8 @@ thermal_printer:
 # ===== HOME ASSISTANT API SERVICES =====
 
 api:
+  encryption: 
+    key: ${api_key}
   actions:
     # ===== CORE PRINTING SERVICES =====
     
