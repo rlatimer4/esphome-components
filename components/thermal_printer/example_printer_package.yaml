@@ -15,7 +15,7 @@ substitutions:
   printer_name: "kitchen_printer"
   printer_uart_tx: "GPIO1"      # Hardware UART0 TX
   printer_uart_rx: "GPIO3"      # Hardware UART0 RX
-  printer_baud_rate: "19200"    # Recommended baud rate
+  printer_baud_rate: "9600"    # Recommended baud rate
   
   # Required - Paper Management
   paper_roll_length: "30000"    # 30 meters in mm
