@@ -29,13 +29,12 @@ CONF_ENABLE_QR_CODES = "enable_qr_codes"
 CONF_DTR_PIN = "dtr_pin"
 CONF_ENABLE_DTR = "enable_dtr_handshaking"
 
-# NEW: Queue System Configuration
-CONF_ENABLE_QUEUE = "enable_queue_system"
+# NEW: Print Queue Configuration
 CONF_MAX_QUEUE_SIZE = "max_queue_size"
-CONF_PRINT_DELAY = "print_delay_ms"
+CONF_PRINT_DELAY_MS = "print_delay_ms"
 CONF_AUTO_PROCESS_QUEUE = "auto_process_queue"
 
-# Enhanced configuration schema with DTR and Queue support
+# Enhanced configuration schema with queue support
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
@@ -66,10 +65,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_ENABLE_DTR, default=False): cv.boolean,
             cv.Optional(CONF_DTR_PIN): pins.internal_gpio_input_pin_schema,
             
-            # NEW: Queue System Configuration
-            cv.Optional(CONF_ENABLE_QUEUE, default=True): cv.boolean,
-            cv.Optional(CONF_MAX_QUEUE_SIZE, default=10): cv.int_range(min=2, max=50),
-            cv.Optional(CONF_PRINT_DELAY, default=2000): cv.int_range(min=100, max=10000),  # Allow down to 100ms
+            # NEW: Print Queue System Configuration
+            cv.Optional(CONF_MAX_QUEUE_SIZE, default=10): cv.int_range(min=5, max=50),
+            cv.Optional(CONF_PRINT_DELAY_MS, default=500): cv.int_range(min=100, max=10000),
             cv.Optional(CONF_AUTO_PROCESS_QUEUE, default=True): cv.boolean,
         }
     )
@@ -129,23 +127,31 @@ def validate_dtr_settings(config):
     return config
 
 def validate_queue_settings(config):
-    """Validate queue system configuration"""
-    enable_queue = config.get(CONF_ENABLE_QUEUE, True)
-    max_queue_size = config.get(CONF_MAX_QUEUE_SIZE, 10)
-    print_delay = config.get(CONF_PRINT_DELAY, 2000)
-    enable_dtr = config.get(CONF_ENABLE_DTR, False)
+    """Validate print queue configuration"""
+    max_size = config.get(CONF_MAX_QUEUE_SIZE, 10)
+    delay_ms = config.get(CONF_PRINT_DELAY_MS, 500)
     
-    if enable_queue:
-        if max_queue_size < 2:
-            raise cv.Invalid("Queue size must be at least 2 jobs")
-        
-        # More lenient validation with DTR
-        if enable_dtr:
-            if print_delay < 100:
-                raise cv.Invalid("Print delay must be at least 100ms even with DTR")
-        else:
-            if print_delay < 500:
-                raise cv.Invalid("Print delay must be at least 500ms without DTR to prevent printer overload")
+    if max_size < 5:
+        raise cv.Invalid(
+            f"max_queue_size ({max_size}) too small. Minimum recommended: 5"
+        )
+    
+    if max_size > 50:
+        raise cv.Invalid(
+            f"max_queue_size ({max_size}) too large. Maximum recommended: 50 (memory constraints)"
+        )
+    
+    if delay_ms < 100:
+        raise cv.Invalid(
+            f"print_delay_ms ({delay_ms}) too small. Minimum recommended: 100ms"
+        )
+    
+    # Warn about very high delays
+    if delay_ms > 5000:
+        import esphome._logging as logging
+        logging.warning(
+            f"print_delay_ms ({delay_ms}) is very high. This will make printing very slow."
+        )
     
     return config
 
@@ -159,7 +165,7 @@ CONFIG_SCHEMA = cv.All(
 )
 
 async def to_code(config):
-    """Generate the component code with DTR handshaking and queue system support"""
+    """Generate the component code with queue system support"""
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
@@ -187,11 +193,15 @@ async def to_code(config):
         cg.add(var.set_dtr_pin(dtr_pin))
         cg.add(var.enable_dtr_handshaking(True))
     
-    # NEW: Queue System Configuration
-    if config.get(CONF_ENABLE_QUEUE, True):
-        cg.add(var.set_max_queue_size(config.get(CONF_MAX_QUEUE_SIZE, 10)))
-        cg.add(var.set_print_delay(config.get(CONF_PRINT_DELAY, 2000)))
-        cg.add(var.enable_auto_queue_processing(config.get(CONF_AUTO_PROCESS_QUEUE, True)))
+    # NEW: Print Queue Configuration
+    if CONF_MAX_QUEUE_SIZE in config:
+        cg.add(var.set_max_queue_size(config[CONF_MAX_QUEUE_SIZE]))
+    
+    if CONF_PRINT_DELAY_MS in config:
+        cg.add(var.set_print_delay(config[CONF_PRINT_DELAY_MS]))
+    
+    if CONF_AUTO_PROCESS_QUEUE in config:
+        cg.add(var.enable_auto_queue_processing(config[CONF_AUTO_PROCESS_QUEUE]))
     
     # Add compile-time definitions
     cg.add_define("THERMAL_PRINTER_PAPER_WIDTH", config.get(CONF_PAPER_WIDTH, 58))
@@ -207,5 +217,9 @@ async def to_code(config):
     if config.get(CONF_ENABLE_DTR, False):
         cg.add_define("THERMAL_PRINTER_ENABLE_DTR")
     
-    if config.get(CONF_ENABLE_QUEUE, True):
-        cg.add_define("THERMAL_PRINTER_ENABLE_QUEUE")
+    # NEW: Queue system feature flag
+    cg.add_define("THERMAL_PRINTER_ENABLE_QUEUE")
+    
+    # Queue configuration defines
+    cg.add_define("THERMAL_PRINTER_MAX_QUEUE_SIZE", config.get(CONF_MAX_QUEUE_SIZE, 10))
+    cg.add_define("THERMAL_PRINTER_DEFAULT_DELAY_MS", config.get(CONF_PRINT_DELAY_MS, 500))
