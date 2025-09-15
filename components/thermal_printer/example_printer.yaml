@@ -381,7 +381,6 @@ binary_sensor:
     id: printer_busy
     lambda: |-
       return id(my_thermal_printer)->is_printer_busy();
-    update_interval: 2s
 
   - platform: template
     name: "DTR Enabled"
