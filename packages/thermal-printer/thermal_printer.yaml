@@ -1,0 +1,635 @@
+# packages/thermal_printer.yaml
+# ESPHome Thermal Printer Package with Queue System
+# 
+# This package provides a complete thermal printer integration with:
+# - Print job queue system to prevent interruptions
+# - DTR handshaking support for reliable communication  
+# - Paper usage tracking with persistent storage
+# - Enhanced printing features (QR codes, barcodes, formatting)
+# - Comprehensive monitoring and control
+#
+# Usage:
+#   packages:
+#     thermal_printer: !include packages/thermal_printer.yaml
+#
+# Required configuration in main device YAML:
+#   substitutions:
+#     printer_name: "thermal_printer"          # Device name
+#     printer_uart_tx: "GPIO1"                 # UART TX pin
+#     printer_uart_rx: "GPIO3"                 # UART RX pin  
+#     printer_baud_rate: "19200"               # Baud rate
+#     paper_roll_length: "30000"               # Paper roll length in mm
+#     queue_max_size: "20"                     # Maximum queue size
+#     print_delay_ms: "800"                    # Delay between jobs
+#
+# Optional substitutions:
+#     enable_dtr: "false"                      # Enable DTR handshaking
+#     dtr_pin: "GPIO4"                         # DTR pin (if enabled)
+#     heat_dots: "7"                           # Heat dots (1-15)
+#     heat_time: "80"                          # Heat time (50-200)
+#     heat_interval: "2"                       # Heat interval (1-10)
+
+# External components - thermal printer with queue system
+external_components:
+  - source:
+      type: local
+      path: my_components
+
+# UART Configuration
+uart:
+  id: ${printer_name}_uart
+  tx_pin: ${printer_uart_tx}
+  rx_pin: ${printer_uart_rx}
+  baud_rate: ${printer_baud_rate}
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+
+# ===== THERMAL PRINTER CORE COMPONENT =====
+
+thermal_printer:
+  id: ${printer_name}
+  uart_id: ${printer_name}_uart
+  
+  # Basic Configuration
+  paper_roll_length: ${paper_roll_length}
+  line_height_calibration: 4.0
+  startup_message: true
+  
+  # Heat Configuration
+  heat_dots: ${heat_dots}
+  heat_time: ${heat_time}
+  heat_interval: ${heat_interval}
+  
+  # Print Queue Configuration
+  max_queue_size: ${queue_max_size}
+  print_delay_ms: ${print_delay_ms}
+  auto_process_queue: true
+  
+  # Optional DTR Configuration (if enabled)
+  enable_dtr_handshaking: ${enable_dtr}
+  dtr_pin: ${dtr_pin}
+
+# ===== HOME ASSISTANT API SERVICES =====
+
+api:
+  actions:
+    # ===== CORE PRINTING SERVICES =====
+    
+    # Enhanced text printing with automatic queuing
+    - action: ${printer_name}_print_text
+      variables:
+        message: string
+        text_size: string
+        alignment: string
+        bold: bool
+        underline: bool
+        inverse: bool
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            
+            uint8_t size = 2; // Default medium
+            if (text_size == "S") size = 1;
+            else if (text_size == "M") size = 2;
+            else if (text_size == "L") size = 3;
+            
+            uint8_t align = 0; // Default left
+            if (alignment == "L") align = 0;
+            else if (alignment == "C") align = 1;
+            else if (alignment == "R") align = 2;
+            
+            auto result = printer->queue_text_job(message.c_str(), size, align, bold, underline, inverse);
+            
+            if (result == PrintResult::QUEUE_FULL) {
+              ESP_LOGW("${printer_name}", "Queue full! Text job dropped");
+            } else {
+              ESP_LOGD("${printer_name}", "Text job queued successfully");
+            }
+
+    # Barcode printing with queuing
+    - action: ${printer_name}_print_barcode
+      variables:
+        barcode_type: int
+        barcode_data: string
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            auto result = printer->queue_barcode_job(barcode_data.c_str(), barcode_type);
+            
+            if (result == PrintResult::QUEUE_FULL) {
+              ESP_LOGW("${printer_name}", "Queue full! Barcode job dropped");
+            } else {
+              ESP_LOGI("${printer_name}", "Barcode job queued: type=%d", barcode_type);
+            }
+
+    # QR Code printing with queuing
+    - action: ${printer_name}_print_qr_code
+      variables:
+        data: string
+        size: int
+        error_correction: int
+        label: string
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            
+            // Queue label first if provided
+            if (!label.empty()) {
+              printer->queue_text_job(label.c_str(), 1, 1, false, false, false);
+              printer->queue_feed_job(1);
+            }
+            
+            auto result = printer->queue_qr_job(data.c_str(), size, error_correction);
+            
+            if (result == PrintResult::QUEUE_FULL) {
+              ESP_LOGW("${printer_name}", "Queue full! QR job dropped");
+            } else {
+              ESP_LOGI("${printer_name}", "QR job queued: size=%d", size);
+            }
+
+    # Two-column printing with queuing
+    - action: ${printer_name}_print_two_column
+      variables:
+        left_text: string
+        right_text: string
+        fill_dots: bool
+        text_size: string
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            char size_char = 'S';
+            if (text_size == "M") size_char = 'M';
+            else if (text_size == "L") size_char = 'L';
+            
+            auto result = printer->queue_two_column_job(left_text.c_str(), right_text.c_str(), fill_dots, size_char);
+            
+            if (result == PrintResult::QUEUE_FULL) {
+              ESP_LOGW("${printer_name}", "Queue full! Two-column job dropped");
+            } else {
+              ESP_LOGD("${printer_name}", "Two-column job queued");
+            }
+
+    # Table row printing with queuing  
+    - action: ${printer_name}_print_table_row
+      variables:
+        col1: string
+        col2: string
+        col3: string
+        header: bool
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            auto result = printer->queue_table_row_job(col1.c_str(), col2.c_str(), 
+                                                      col3.empty() ? nullptr : col3.c_str(), header);
+            
+            if (result == PrintResult::QUEUE_FULL) {
+              ESP_LOGW("${printer_name}", "Queue full! Table row job dropped");
+            } else {
+              ESP_LOGD("${printer_name}", "Table row job queued");
+            }
+
+    # Paper feeding with queuing
+    - action: ${printer_name}_feed_paper
+      variables:
+        lines: int
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            auto result = printer->queue_feed_job(lines);
+            
+            if (result == PrintResult::QUEUE_FULL) {
+              ESP_LOGW("${printer_name}", "Queue full! Feed job dropped");
+            } else {
+              ESP_LOGD("${printer_name}", "Feed job queued: %d lines", lines);
+            }
+
+    # ===== QUEUE MANAGEMENT SERVICES =====
+    
+    # Clear all pending jobs
+    - action: ${printer_name}_clear_queue
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            printer->clear_queue();
+            ESP_LOGI("${printer_name}", "Print queue cleared by user");
+
+    # Process queue immediately (force processing)
+    - action: ${printer_name}_process_queue
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            printer->process_queue();
+
+    # Flush queue and wait for completion
+    - action: ${printer_name}_flush_queue
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            ESP_LOGI("${printer_name}", "Flushing queue...");
+            printer->flush_queue_and_wait();
+
+    # Configure queue settings
+    - action: ${printer_name}_configure_queue
+      variables:
+        max_size: int
+        delay_ms: int
+        auto_process: bool
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            printer->set_max_queue_size(max_size);
+            printer->set_print_delay(delay_ms);
+            printer->enable_auto_queue_processing(auto_process);
+            ESP_LOGI("${printer_name}", "Queue configured: size=%d, delay=%dms, auto=%s", 
+                     max_size, delay_ms, auto_process ? "yes" : "no");
+
+    # ===== BULK/TEMPLATE PRINTING SERVICES =====
+    
+    # Print multiple lines of text efficiently
+    - action: ${printer_name}_print_text_lines
+      variables:
+        lines: string
+        separator: string
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            std::string text = lines;
+            std::string sep = separator.empty() ? "\n" : separator;
+            
+            size_t pos = 0;
+            size_t found = 0;
+            int line_count = 0;
+            
+            while ((found = text.find(sep, pos)) != std::string::npos) {
+              std::string line = text.substr(pos, found - pos);
+              if (!line.empty()) {
+                printer->queue_text_job(line.c_str(), 1, 0, false, false, false);
+                line_count++;
+              }
+              pos = found + sep.length();
+            }
+            
+            // Last line
+            if (pos < text.length()) {
+              std::string line = text.substr(pos);
+              if (!line.empty()) {
+                printer->queue_text_job(line.c_str(), 1, 0, false, false, false);
+                line_count++;
+              }
+            }
+            
+            ESP_LOGI("${printer_name}", "Queued %d text lines", line_count);
+
+    # Print a complete receipt with multiple components
+    - action: ${printer_name}_print_receipt
+      variables:
+        business_name: string
+        items: string
+        total: string
+        add_date: bool
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            
+            // Header
+            printer->queue_text_job(business_name.c_str(), 2, 1, true, false, false);
+            printer->queue_feed_job(1);
+            
+            if (add_date) {
+              printer->queue_text_job("Date: Today", 1, 1, false, false, false);
+              printer->queue_feed_job(1);
+            }
+            
+            // Separator
+            printer->queue_text_job("================================", 1, 1, false, false, false);
+            printer->queue_feed_job(1);
+            
+            // Items (split by newlines and print each)
+            std::string items_str = items;
+            size_t pos = 0;
+            size_t found = 0;
+            
+            while ((found = items_str.find('\n', pos)) != std::string::npos) {
+              std::string item = items_str.substr(pos, found - pos);
+              if (!item.empty()) {
+                printer->queue_text_job(item.c_str(), 1, 0, false, false, false);
+              }
+              pos = found + 1;
+            }
+            
+            // Last item
+            if (pos < items_str.length()) {
+              std::string item = items_str.substr(pos);
+              if (!item.empty()) {
+                printer->queue_text_job(item.c_str(), 1, 0, false, false, false);
+              }
+            }
+            
+            printer->queue_feed_job(1);
+            
+            // Total
+            printer->queue_two_column_job("TOTAL:", total.c_str(), true, 'S');
+            printer->queue_feed_job(2);
+            
+            // Footer
+            printer->queue_text_job("Thank you!", 1, 1, false, false, false);
+            printer->queue_feed_job(4);
+            
+            ESP_LOGI("${printer_name}", "Receipt queued successfully");
+
+    # ===== LEGACY/IMMEDIATE SERVICES =====
+    
+    # Immediate wake (bypasses queue)
+    - action: ${printer_name}_wake_printer
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            ESP_LOGI("${printer_name}", "Immediate wake (bypassing queue)");
+            printer->wake();
+
+    # Immediate sleep (bypasses queue)
+    - action: ${printer_name}_sleep_printer
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            ESP_LOGI("${printer_name}", "Immediate sleep (bypassing queue)");
+            printer->sleep();
+
+    # Immediate test print (bypasses queue)
+    - action: ${printer_name}_test_print
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            ESP_LOGI("${printer_name}", "Immediate test print (bypassing queue)");
+            printer->test();
+
+    # Reset paper usage counters
+    - action: ${printer_name}_reset_paper_usage
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            printer->reset_paper_usage();
+
+    # Set paper roll length
+    - action: ${printer_name}_set_paper_roll_length
+      variables:
+        length_mm: float
+      then:
+        - lambda: |-
+            auto printer = id(${printer_name});
+            printer->set_paper_roll_length(length_mm);
+
+# ===== SENSORS =====
+
+text_sensor:
+  - platform: thermal_printer
+    thermal_printer_id: ${printer_name}
+    name: "${printer_name} Paper Status"
+    id: ${printer_name}_paper_status
+
+  - platform: template
+    name: "${printer_name} Enhanced Status"
+    id: ${printer_name}_status_enhanced
+    lambda: |-
+      auto printer = id(${printer_name});
+      char status[100];
+      snprintf(status, sizeof(status), "%s | Queue: %d/%d | Processed: %d", 
+               printer->has_paper() ? "Paper OK" : "Paper Out",
+               printer->get_queue_size(),
+               ${queue_max_size},
+               printer->get_total_jobs_processed());
+      return std::string(status);
+    update_interval: 5s
+
+binary_sensor:
+  - platform: thermal_printer
+    thermal_printer_id: ${printer_name}
+    name: "${printer_name} Paper Loaded"
+    id: ${printer_name}_paper_loaded
+
+  - platform: template
+    name: "${printer_name} Queue Processing"
+    id: ${printer_name}_queue_processing
+    device_class: running
+    lambda: |-
+      return id(${printer_name})->is_processing();
+
+  - platform: template
+    name: "${printer_name} Queue Full"
+    id: ${printer_name}_queue_full
+    device_class: problem
+    lambda: |-
+      return id(${printer_name})->is_queue_full();
+
+sensor:
+  - platform: template
+    name: "${printer_name} Paper Usage (mm)"
+    id: ${printer_name}_paper_usage_mm
+    icon: mdi:ruler
+    unit_of_measurement: "mm"
+    accuracy_decimals: 1
+    state_class: total_increasing
+    lambda: |-
+      return id(${printer_name})->get_paper_usage_mm();
+    update_interval: 30s
+
+  - platform: template
+    name: "${printer_name} Paper Usage (%)"
+    id: ${printer_name}_paper_usage_percent
+    icon: mdi:percent
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    lambda: |-
+      return id(${printer_name})->get_paper_usage_percent();
+    update_interval: 30s
+
+  - platform: template
+    name: "${printer_name} Lines Printed"
+    id: ${printer_name}_lines_printed
+    icon: mdi:format-line-spacing
+    state_class: total_increasing
+    lambda: |-
+      return id(${printer_name})->get_lines_printed();
+    update_interval: 30s
+
+  - platform: template
+    name: "${printer_name} Characters Printed"
+    id: ${printer_name}_characters_printed
+    icon: mdi:alphabetical
+    state_class: total_increasing
+    lambda: |-
+      return id(${printer_name})->get_characters_printed();
+    update_interval: 30s
+
+  # ===== QUEUE STATISTICS SENSORS =====
+  
+  - platform: template
+    name: "${printer_name} Queue Size"
+    id: ${printer_name}_queue_size
+    icon: mdi:view-list
+    lambda: |-
+      return id(${printer_name})->get_queue_size();
+    update_interval: 2s
+
+  - platform: template
+    name: "${printer_name} Total Jobs Processed"
+    id: ${printer_name}_total_jobs_processed
+    icon: mdi:counter
+    state_class: total_increasing
+    lambda: |-
+      return id(${printer_name})->get_total_jobs_processed();
+    update_interval: 30s
+
+  - platform: template
+    name: "${printer_name} Jobs Dropped"
+    id: ${printer_name}_jobs_dropped
+    icon: mdi:alert-circle
+    state_class: total_increasing
+    lambda: |-
+      return id(${printer_name})->get_jobs_dropped();
+    update_interval: 30s
+
+  - platform: template
+    name: "${printer_name} Queue Efficiency"
+    id: ${printer_name}_queue_efficiency
+    icon: mdi:percent
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    lambda: |-
+      auto printer = id(${printer_name});
+      uint32_t total = printer->get_total_jobs_processed();
+      uint32_t dropped = printer->get_jobs_dropped();
+      
+      if (total + dropped == 0) return 100.0f;
+      
+      float efficiency = ((float)total / (total + dropped)) * 100.0f;
+      return efficiency;
+    update_interval: 60s
+
+# ===== CONTROLS =====
+
+switch:
+  - platform: template
+    name: "${printer_name} Power"
+    id: ${printer_name}_power_switch
+    icon: mdi:power
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(${printer_name})->wake();
+    turn_off_action:
+      - lambda: |-
+          id(${printer_name})->sleep();
+
+  - platform: template
+    name: "${printer_name} Auto Queue Processing"
+    id: ${printer_name}_auto_queue_switch
+    icon: mdi:cog-play
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - lambda: |-
+          id(${printer_name})->enable_auto_queue_processing(true);
+          ESP_LOGI("${printer_name}", "Auto queue processing enabled");
+    turn_off_action:
+      - lambda: |-
+          id(${printer_name})->enable_auto_queue_processing(false);
+          ESP_LOGI("${printer_name}", "Auto queue processing disabled");
+
+number:
+  - platform: template
+    name: "${printer_name} Queue Max Size"
+    id: ${printer_name}_queue_max_size
+    icon: mdi:format-list-numbered
+    min_value: 5
+    max_value: 50
+    initial_value: ${queue_max_size}
+    step: 1
+    mode: box
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(${printer_name})->set_max_queue_size(x);
+          ESP_LOGI("${printer_name}", "Queue max size set to %d", (int)x);
+
+  - platform: template
+    name: "${printer_name} Print Delay (ms)"
+    id: ${printer_name}_print_delay
+    icon: mdi:timer
+    min_value: 100
+    max_value: 5000
+    initial_value: ${print_delay_ms}
+    step: 100
+    mode: box
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(${printer_name})->set_print_delay(x);
+          ESP_LOGI("${printer_name}", "Print delay set to %dms", (int)x);
+
+button:
+  - platform: template
+    name: "${printer_name} Test Print"
+    id: ${printer_name}_test_button
+    icon: mdi:printer-check
+    on_press:
+      - lambda: |-
+          auto printer = id(${printer_name});
+          printer->test();
+
+  - platform: template
+    name: "${printer_name} Clear Queue"
+    id: ${printer_name}_clear_queue_button
+    icon: mdi:delete-sweep
+    on_press:
+      - lambda: |-
+          auto printer = id(${printer_name});
+          ESP_LOGI("${printer_name}", "Clearing queue via button press");
+          printer->clear_queue();
+
+  - platform: template
+    name: "${printer_name} Process Queue Now"
+    id: ${printer_name}_process_queue_button
+    icon: mdi:play
+    on_press:
+      - lambda: |-
+          auto printer = id(${printer_name});
+          ESP_LOGI("${printer_name}", "Manual queue processing triggered");
+          printer->process_queue();
+
+  - platform: template
+    name: "${printer_name} Flush Queue"
+    id: ${printer_name}_flush_queue_button
+    icon: mdi:file-export
+    on_press:
+      - lambda: |-
+          auto printer = id(${printer_name});
+          ESP_LOGI("${printer_name}", "Flushing queue via button press");
+          printer->flush_queue_and_wait();
+
+  - platform: template
+    name: "${printer_name} Queue Test"
+    id: ${printer_name}_queue_test_button
+    icon: mdi:test-tube
+    on_press:
+      - lambda: |-
+          auto printer = id(${printer_name});
+          ESP_LOGI("${printer_name}", "Running queue test...");
+          
+          // Queue multiple test jobs quickly
+          printer->queue_text_job("=== QUEUE TEST ===", 2, 1, true, false, false);
+          printer->queue_feed_job(1);
+          
+          for (int i = 1; i <= 5; i++) {
+            char line[32];
+            snprintf(line, sizeof(line), "Test line %d", i);
+            printer->queue_text_job(line, 1, 0, false, false, false);
+          }
+          
+          printer->queue_feed_job(1);
+          printer->queue_text_job("=== TEST COMPLETE ===", 1, 1, false, false, false);
+          printer->queue_feed_job(3);
+          
+          ESP_LOGI("${printer_name}", "Queue test completed - %d jobs queued", 
+                   printer->get_queue_size());
