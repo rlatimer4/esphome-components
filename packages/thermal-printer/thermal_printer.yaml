@@ -1,5 +1,5 @@
 # packages/thermal_printer.yaml
-# ESPHome Thermal Printer Package with Queue System
+# ESPHome Thermal Printer Package with Queue System (Fixed Version)
 # 
 # This package provides a complete thermal printer integration with:
 # - Print job queue system to prevent interruptions
@@ -90,6 +90,12 @@ api:
         - lambda: |-
             auto printer = id(${printer_name});
             
+            // Check if queue is full before adding
+            if (printer->is_queue_full()) {
+              ESP_LOGW("${printer_name}", "Queue full! Cannot add text job");
+              return;
+            }
+            
             uint8_t size = 2; // Default medium
             if (text_size == "S") size = 1;
             else if (text_size == "M") size = 2;
@@ -100,13 +106,8 @@ api:
             else if (alignment == "C") align = 1;
             else if (alignment == "R") align = 2;
             
-            auto result = printer->queue_text_job(message.c_str(), size, align, bold, underline, inverse);
-            
-            if (result == PrintResult::QUEUE_FULL) {
-              ESP_LOGW("${printer_name}", "Queue full! Text job dropped");
-            } else {
-              ESP_LOGD("${printer_name}", "Text job queued successfully");
-            }
+            printer->queue_text_job(message.c_str(), size, align, bold, underline, inverse);
+            ESP_LOGD("${printer_name}", "Text job queued successfully");
 
     # Barcode printing with queuing
     - action: ${printer_name}_print_barcode
@@ -116,13 +117,14 @@ api:
       then:
         - lambda: |-
             auto printer = id(${printer_name});
-            auto result = printer->queue_barcode_job(barcode_data.c_str(), barcode_type);
             
-            if (result == PrintResult::QUEUE_FULL) {
-              ESP_LOGW("${printer_name}", "Queue full! Barcode job dropped");
-            } else {
-              ESP_LOGI("${printer_name}", "Barcode job queued: type=%d", barcode_type);
+            if (printer->is_queue_full()) {
+              ESP_LOGW("${printer_name}", "Queue full! Cannot add barcode job");
+              return;
             }
+            
+            printer->queue_barcode_job(barcode_data.c_str(), barcode_type);
+            ESP_LOGI("${printer_name}", "Barcode job queued: type=%d", barcode_type);
 
     # QR Code printing with queuing
     - action: ${printer_name}_print_qr_code
@@ -135,19 +137,19 @@ api:
         - lambda: |-
             auto printer = id(${printer_name});
             
+            if (printer->is_queue_full()) {
+              ESP_LOGW("${printer_name}", "Queue full! Cannot add QR job");
+              return;
+            }
+            
             // Queue label first if provided
             if (!label.empty()) {
               printer->queue_text_job(label.c_str(), 1, 1, false, false, false);
               printer->queue_feed_job(1);
             }
             
-            auto result = printer->queue_qr_job(data.c_str(), size, error_correction);
-            
-            if (result == PrintResult::QUEUE_FULL) {
-              ESP_LOGW("${printer_name}", "Queue full! QR job dropped");
-            } else {
-              ESP_LOGI("${printer_name}", "QR job queued: size=%d", size);
-            }
+            printer->queue_qr_job(data.c_str(), size, error_correction);
+            ESP_LOGI("${printer_name}", "QR job queued: size=%d", size);
 
     # Two-column printing with queuing
     - action: ${printer_name}_print_two_column
@@ -159,17 +161,18 @@ api:
       then:
         - lambda: |-
             auto printer = id(${printer_name});
+            
+            if (printer->is_queue_full()) {
+              ESP_LOGW("${printer_name}", "Queue full! Cannot add two-column job");
+              return;
+            }
+            
             char size_char = 'S';
             if (text_size == "M") size_char = 'M';
             else if (text_size == "L") size_char = 'L';
             
-            auto result = printer->queue_two_column_job(left_text.c_str(), right_text.c_str(), fill_dots, size_char);
-            
-            if (result == PrintResult::QUEUE_FULL) {
-              ESP_LOGW("${printer_name}", "Queue full! Two-column job dropped");
-            } else {
-              ESP_LOGD("${printer_name}", "Two-column job queued");
-            }
+            printer->queue_two_column_job(left_text.c_str(), right_text.c_str(), fill_dots, size_char);
+            ESP_LOGD("${printer_name}", "Two-column job queued");
 
     # Table row printing with queuing  
     - action: ${printer_name}_print_table_row
@@ -181,14 +184,15 @@ api:
       then:
         - lambda: |-
             auto printer = id(${printer_name});
-            auto result = printer->queue_table_row_job(col1.c_str(), col2.c_str(), 
-                                                      col3.empty() ? nullptr : col3.c_str(), header);
             
-            if (result == PrintResult::QUEUE_FULL) {
-              ESP_LOGW("${printer_name}", "Queue full! Table row job dropped");
-            } else {
-              ESP_LOGD("${printer_name}", "Table row job queued");
+            if (printer->is_queue_full()) {
+              ESP_LOGW("${printer_name}", "Queue full! Cannot add table row job");
+              return;
             }
+            
+            printer->queue_table_row_job(col1.c_str(), col2.c_str(), 
+                                        col3.empty() ? nullptr : col3.c_str(), header);
+            ESP_LOGD("${printer_name}", "Table row job queued");
 
     # Paper feeding with queuing
     - action: ${printer_name}_feed_paper
@@ -197,13 +201,14 @@ api:
       then:
         - lambda: |-
             auto printer = id(${printer_name});
-            auto result = printer->queue_feed_job(lines);
             
-            if (result == PrintResult::QUEUE_FULL) {
-              ESP_LOGW("${printer_name}", "Queue full! Feed job dropped");
-            } else {
-              ESP_LOGD("${printer_name}", "Feed job queued: %d lines", lines);
+            if (printer->is_queue_full()) {
+              ESP_LOGW("${printer_name}", "Queue full! Cannot add feed job");
+              return;
             }
+            
+            printer->queue_feed_job(lines);
+            ESP_LOGD("${printer_name}", "Feed job queued: %d lines", lines);
 
     # ===== QUEUE MANAGEMENT SERVICES =====
     
@@ -262,7 +267,7 @@ api:
             size_t found = 0;
             int line_count = 0;
             
-            while ((found = text.find(sep, pos)) != std::string::npos) {
+            while ((found = text.find(sep, pos)) != std::string::npos && !printer->is_queue_full()) {
               std::string line = text.substr(pos, found - pos);
               if (!line.empty()) {
                 printer->queue_text_job(line.c_str(), 1, 0, false, false, false);
@@ -272,7 +277,7 @@ api:
             }
             
             // Last line
-            if (pos < text.length()) {
+            if (pos < text.length() && !printer->is_queue_full()) {
               std::string line = text.substr(pos);
               if (!line.empty()) {
                 printer->queue_text_job(line.c_str(), 1, 0, false, false, false);
@@ -293,6 +298,11 @@ api:
         - lambda: |-
             auto printer = id(${printer_name});
             
+            if (printer->is_queue_full()) {
+              ESP_LOGW("${printer_name}", "Queue full! Cannot print receipt");
+              return;
+            }
+            
             // Header
             printer->queue_text_job(business_name.c_str(), 2, 1, true, false, false);
             printer->queue_feed_job(1);
@@ -311,7 +321,7 @@ api:
             size_t pos = 0;
             size_t found = 0;
             
-            while ((found = items_str.find('\n', pos)) != std::string::npos) {
+            while ((found = items_str.find('\n', pos)) != std::string::npos && !printer->is_queue_full()) {
               std::string item = items_str.substr(pos, found - pos);
               if (!item.empty()) {
                 printer->queue_text_job(item.c_str(), 1, 0, false, false, false);
@@ -320,26 +330,28 @@ api:
             }
             
             // Last item
-            if (pos < items_str.length()) {
+            if (pos < items_str.length() && !printer->is_queue_full()) {
               std::string item = items_str.substr(pos);
               if (!item.empty()) {
                 printer->queue_text_job(item.c_str(), 1, 0, false, false, false);
               }
             }
             
-            printer->queue_feed_job(1);
-            
-            // Total
-            printer->queue_two_column_job("TOTAL:", total.c_str(), true, 'S');
-            printer->queue_feed_job(2);
-            
-            // Footer
-            printer->queue_text_job("Thank you!", 1, 1, false, false, false);
-            printer->queue_feed_job(4);
+            if (!printer->is_queue_full()) {
+              printer->queue_feed_job(1);
+              
+              // Total
+              printer->queue_two_column_job("TOTAL:", total.c_str(), true, 'S');
+              printer->queue_feed_job(2);
+              
+              // Footer
+              printer->queue_text_job("Thank you!", 1, 1, false, false, false);
+              printer->queue_feed_job(4);
+            }
             
             ESP_LOGI("${printer_name}", "Receipt queued successfully");
 
-    # ===== LEGACY/IMMEDIATE SERVICES =====
+    # ===== LEGACY/IMMEDIATE SERVICES (bypass queue) =====
     
     # Immediate wake (bypasses queue)
     - action: ${printer_name}_wake_printer
@@ -618,19 +630,27 @@ button:
           auto printer = id(${printer_name});
           ESP_LOGI("${printer_name}", "Running queue test...");
           
+          // Only run test if queue has space
+          if (printer->is_queue_full()) {
+            ESP_LOGW("${printer_name}", "Cannot run queue test - queue is full");
+            return;
+          }
+          
           // Queue multiple test jobs quickly
           printer->queue_text_job("=== QUEUE TEST ===", 2, 1, true, false, false);
           printer->queue_feed_job(1);
           
-          for (int i = 1; i <= 5; i++) {
+          for (int i = 1; i <= 5 && !printer->is_queue_full(); i++) {
             char line[32];
             snprintf(line, sizeof(line), "Test line %d", i);
             printer->queue_text_job(line, 1, 0, false, false, false);
           }
           
-          printer->queue_feed_job(1);
-          printer->queue_text_job("=== TEST COMPLETE ===", 1, 1, false, false, false);
-          printer->queue_feed_job(3);
+          if (!printer->is_queue_full()) {
+            printer->queue_feed_job(1);
+            printer->queue_text_job("=== TEST COMPLETE ===", 1, 1, false, false, false);
+            printer->queue_feed_job(3);
+          }
           
           ESP_LOGI("${printer_name}", "Queue test completed - %d jobs queued", 
                    printer->get_queue_size());
