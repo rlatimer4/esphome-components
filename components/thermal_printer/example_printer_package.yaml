@@ -1,0 +1,284 @@
+# thermal_printer_device.yaml
+# Example device configuration using the thermal printer package
+
+esphome:
+  name: kitchen-printer
+  friendly_name: Kitchen Thermal Printer
+  platform: ESP8266
+  board: d1_mini
+
+# ===== PACKAGE CONFIGURATION =====
+# Define all required substitutions for the package
+
+substitutions:
+  # Required - Printer Configuration
+  printer_name: "kitchen_printer"
+  printer_uart_tx: "GPIO1"      # Hardware UART0 TX
+  printer_uart_rx: "GPIO3"      # Hardware UART0 RX
+  printer_baud_rate: "19200"    # Recommended baud rate
+  
+  # Required - Paper Management
+  paper_roll_length: "30000"    # 30 meters in mm
+  
+  # Required - Queue Configuration  
+  queue_max_size: "20"          # Maximum jobs in queue
+  print_delay_ms: "800"         # Delay between jobs (ms)
+  
+  # Optional - Heat Settings (conservative defaults)
+  heat_dots: "8"                # Heat dots (1-15)
+  heat_time: "80"               # Heat time (50-200)
+  heat_interval: "2"            # Heat interval (1-10)
+  
+  # Optional - DTR Handshaking (disabled by default)
+  enable_dtr: "false"           # Set to "true" to enable DTR
+  dtr_pin: "GPIO4"              # DTR pin (only used if enable_dtr is true)
+
+# Import the thermal printer package
+packages:
+  remote_package_files:
+    url: https://github.com/rlatimer4/esphome-components/blob/master/packages/thermal-printer/thermal_printer.yaml
+    files: [thermal_printer.yaml]  
+# ===== DEVICE-SPECIFIC CONFIGURATION =====
+
+# WiFi Configuration
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  ap:
+    ssid: "KitchenPrinter-Fallback"
+    password: "thermalprint123"
+
+captive_portal:
+
+# Logging Configuration
+logger:
+  level: INFO
+  logs:
+    thermal_printer: DEBUG
+    uart: INFO
+
+# OTA Updates
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+# Status LED (optional)
+status_led:
+  pin:
+    number: GPIO2
+    inverted: true
+
+# Web Server (optional)
+web_server:
+  port: 80
+  version: 2
+
+# Device-specific sensors (optional)
+sensor:
+  - platform: uptime
+    name: "Kitchen Printer Uptime"
+
+  - platform: wifi_signal
+    name: "Kitchen Printer WiFi Signal"
+    update_interval: 60s
+
+# Device-specific automations (optional)
+# Example: Auto-print daily summary
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+    on_time:
+      # Print daily summary at 8 AM
+      - seconds: 0
+        minutes: 0
+        hours: 8
+        then:
+          - lambda: |-
+              auto printer = id(kitchen_printer);
+              
+              // Print daily header
+              printer->queue_text_job("=== DAILY SUMMARY ===", 2, 1, true, false, false);
+              printer->queue_feed_job(1);
+              
+              // Add current date
+              auto now = id(homeassistant_time).now();
+              char date_str[32];
+              snprintf(date_str, sizeof(date_str), "%04d-%02d-%02d", 
+                       now.year, now.month, now.day_of_month);
+              printer->queue_text_job(date_str, 1, 1, false, false, false);
+              printer->queue_feed_job(2);
+              
+              // Add weather info (you'd get this from your weather integration)
+              printer->queue_text_job("Weather: Check your phone!", 1, 0, false, false, false);
+              printer->queue_feed_job(1);
+              
+              // Add tasks reminder
+              printer->queue_text_job("Today's Tasks:", 1, 0, true, false, false);
+              printer->queue_text_job("- Check the printer", 1, 0, false, false, false);
+              printer->queue_text_job("- Enjoy your day!", 1, 0, false, false, false);
+              printer->queue_feed_job(4);
+              
+              ESP_LOGI("kitchen_printer", "Daily summary queued");
+
+# ===== PACKAGE CUSTOMIZATION EXAMPLES =====
+
+# Additional device-specific buttons
+button:
+  - platform: template
+    name: "Print Shopping List"
+    icon: mdi:cart
+    on_press:
+      - lambda: |-
+          auto printer = id(kitchen_printer);
+          
+          // Print a sample shopping list
+          printer->queue_text_job("SHOPPING LIST", 2, 1, true, false, false);
+          printer->queue_feed_job(1);
+          
+          char date_str[32];
+          auto now = id(homeassistant_time).now();
+          snprintf(date_str, sizeof(date_str), "%04d-%02d-%02d", 
+                   now.year, now.month, now.day_of_month);
+          printer->queue_text_job(date_str, 1, 1, false, false, false);
+          
+          printer->queue_text_job("================================", 1, 0, false, false, false);
+          printer->queue_feed_job(1);
+          
+          // Sample items
+          printer->queue_text_job("[ ] Milk", 1, 0, false, false, false);
+          printer->queue_text_job("[ ] Bread", 1, 0, false, false, false);
+          printer->queue_text_job("[ ] Eggs", 1, 0, false, false, false);
+          printer->queue_text_job("[ ] Coffee", 1, 0, false, false, false);
+          
+          printer->queue_feed_job(2);
+          printer->queue_text_job("Happy Shopping!", 1, 1, false, false, false);
+          printer->queue_feed_job(4);
+
+  - platform: template
+    name: "Print Network Info"
+    icon: mdi:wifi
+    on_press:
+      - lambda: |-
+          auto printer = id(kitchen_printer);
+          
+          printer->queue_text_job("NETWORK INFO", 2, 1, true, false, false);
+          printer->queue_feed_job(1);
+          
+          // Get WiFi info (simplified - you'd use actual sensors)
+          printer->queue_text_job("WiFi: Connected", 1, 0, false, false, false);
+          printer->queue_text_job("IP: Check router", 1, 0, false, false, false);
+          
+          char signal_str[32];
+          // You'd get this from your WiFi signal sensor
+          snprintf(signal_str, sizeof(signal_str), "Signal: Good");
+          printer->queue_text_job(signal_str, 1, 0, false, false, false);
+          
+          printer->queue_feed_job(4);
+
+# Device-specific switches for printer locations
+switch:
+  - platform: template
+    name: "Kitchen Mode"
+    icon: mdi:chef-hat
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          // Configure printer for kitchen use (faster, more informal)
+          auto printer = id(kitchen_printer);
+          printer->set_print_delay(600); // Faster for quick notes
+          ESP_LOGI("kitchen_printer", "Kitchen mode enabled - faster printing");
+    turn_off_action:
+      - lambda: |-
+          // Configure printer for general use
+          auto printer = id(kitchen_printer);
+          printer->set_print_delay(800); // Standard delay
+          ESP_LOGI("kitchen_printer", "Standard mode enabled");
+
+# ===== ADVANCED PACKAGE USAGE EXAMPLES =====
+
+# Create custom receipt templates using the package services
+script:
+  - id: print_coffee_receipt
+    alias: "Print Coffee Receipt"
+    sequence:
+      - service: esphome.kitchen_printer_print_receipt
+        data:
+          business_name: "Kitchen Cafe"
+          items: |
+            Espresso x1
+            Croissant x1
+            Orange Juice x1
+          total: "$8.50"
+          add_date: true
+
+  - id: print_todo_from_ha
+    alias: "Print TODO List from Home Assistant"  
+    sequence:
+      # This would integrate with your Home Assistant TODO lists
+      - service: esphome.kitchen_printer_print_text_lines
+        data:
+          lines: |
+            TODAY'S TASKS
+            ============
+            [ ] Take out trash
+            [ ] Water plants
+            [ ] Call dentist
+            [ ] Buy groceries
+            [ ] Walk the dog
+          separator: "\n"
+
+# Example integration with Home Assistant entities
+# (These would go in your Home Assistant configuration.yaml)
+
+# Example automation to print when doorbell is pressed:
+# automation:
+#   - alias: "Print Visitor Log"
+#     trigger:
+#       - platform: state
+#         entity_id: binary_sensor.doorbell
+#         to: 'on'
+#     action:
+#       - service: esphome.kitchen_printer_print_text
+#         data:
+#           message: "Visitor at {{ now().strftime('%H:%M') }}"
+#           text_size: "M"
+#           alignment: "C"
+#           bold: true
+#           underline: false
+#           inverse: false
+
+# Example sensor to monitor queue health in Home Assistant:
+# sensor:
+#   - platform: template
+#     sensors:
+#       kitchen_printer_health:
+#         friendly_name: "Kitchen Printer Health"
+#         value_template: >
+#           {% set efficiency = states('sensor.kitchen_printer_queue_efficiency') | float %}
+#           {% set queue_size = states('sensor.kitchen_printer_queue_size') | int %}
+#           {% if efficiency > 95 and queue_size < 10 %}
+#             Excellent
+#           {% elif efficiency > 90 and queue_size < 15 %}
+#             Good  
+#           {% elif efficiency > 80 %}
+#             Fair
+#           {% else %}
+#             Poor
+#           {% endif %}
+#         icon_template: >
+#           {% set health = states('sensor.kitchen_printer_health') %}
+#           {% if health == 'Excellent' %}
+#             mdi:check-circle
+#           {% elif health == 'Good' %}
+#             mdi:check
+#           {% elif health == 'Fair' %}
+#             mdi:alert
+#           {% else %}
+#             mdi:alert-circle
+#           {% endif %}
