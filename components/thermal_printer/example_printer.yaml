@@ -53,7 +53,6 @@ api:
 api:
   encryption:
     key: !secret api_encryption_key
-   
   actions:
     # ===== NEW: QUEUE-BASED SERVICES =====
     
@@ -82,9 +81,9 @@ api:
             
             uint8_t job_priority = priority > 0 ? priority : 0;
             
-            PrintResult result = printer->queue_text(message.c_str(), size, align, bold, job_priority);
+            auto result = printer->queue_text(message.c_str(), size, align, bold, job_priority);
             
-            if (result == PrintResult::SUCCESS) {
+            if (result == esphome::thermal_printer::PrintResult::SUCCESS) {
               ESP_LOGI("thermal_printer", "Text queued: '%s' (queue size: %d)", 
                        message.c_str(), printer->get_queue_length());
             } else {
@@ -109,7 +108,7 @@ api:
             
             uint8_t job_priority = priority > 0 ? priority : 0;
             
-            PrintResult result = printer->queue_two_column(
+            auto result = printer->queue_two_column(
               left_text.c_str(), right_text.c_str(), fill_dots, size_char, job_priority);
             
             ESP_LOGI("thermal_printer", "Two-column queued: '%s' | '%s' (queue: %d)", 
@@ -126,7 +125,7 @@ api:
             auto printer = id(my_thermal_printer);
             uint8_t job_priority = priority > 0 ? priority : 0;
             
-            PrintResult result = printer->queue_barcode(barcode_type, barcode_data.c_str(), job_priority);
+            auto result = printer->queue_barcode(barcode_type, barcode_data.c_str(), job_priority);
             ESP_LOGI("thermal_printer", "Barcode queued: type=%d, data='%s'", barcode_type, barcode_data.c_str());
 
     # Queue QR code printing
@@ -141,7 +140,7 @@ api:
             auto printer = id(my_thermal_printer);
             uint8_t job_priority = priority > 0 ? priority : 0;
             
-            PrintResult result = printer->queue_qr_code(data.c_str(), size, error_correction, job_priority);
+            auto result = printer->queue_qr_code(data.c_str(), size, error_correction, job_priority);
             ESP_LOGI("thermal_printer", "QR code queued: size=%d, data length=%d", size, strlen(data.c_str()));
 
     # Queue separator line
@@ -152,7 +151,7 @@ api:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             uint8_t job_priority = priority > 0 ? priority : 0;
-            PrintResult result = printer->queue_separator(job_priority);
+            auto result = printer->queue_separator(job_priority);
 
     # Queue paper feed
     - action: queue_feed_paper
@@ -163,7 +162,7 @@ api:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             uint8_t job_priority = priority > 0 ? priority : 0;
-            PrintResult result = printer->queue_feed(lines, job_priority);
+            auto result = printer->queue_feed(lines, job_priority);
 
     # ===== EMERGENCY/IMMEDIATE SERVICES =====
     
@@ -187,9 +186,9 @@ api:
             if (alignment == "L") align = 0;
             else if (alignment == "R") align = 2;
             
-            PrintResult result = printer->print_immediate(message.c_str(), size, align, bold);
+            auto result = printer->print_immediate(message.c_str(), size, align, bold);
             
-            if (result == PrintResult::SUCCESS) {
+            if (result == esphome::thermal_printer::PrintResult::SUCCESS) {
               ESP_LOGI("thermal_printer", "Emergency print successful: '%s'", message.c_str());
             } else {
               ESP_LOGW("thermal_printer", "Emergency print failed: result=%d", (int)result);
@@ -241,7 +240,7 @@ api:
             while ((pos = items_str.find(delimiter)) != std::string::npos) {
               std::string item = items_str.substr(0, pos);
               if (!item.empty()) {
-                PrintResult result = printer->queue_text(item.c_str(), size, 0, false, job_priority);
+                auto result = printer->queue_text(item.c_str(), size, 0, false, job_priority);
                 item_count++;
               }
               items_str.erase(0, pos + delimiter.length());
@@ -249,7 +248,7 @@ api:
             
             // Process last item
             if (!items_str.empty()) {
-              PrintResult result = printer->queue_text(items_str.c_str(), size, 0, false, job_priority);
+              auto result = printer->queue_text(items_str.c_str(), size, 0, false, job_priority);
               item_count++;
             }
             
@@ -281,7 +280,7 @@ api:
             if (alignment == "C") align = 1;
             else if (alignment == "R") align = 2;
             
-            PrintResult result = printer->print_immediate(message.c_str(), size, align, bold);
+            auto result = printer->print_immediate(message.c_str(), size, align, bold);
 
     # Other original services remain for compatibility
     - action: wake_printer
@@ -338,13 +337,13 @@ thermal_printer:
   
   # ===== NEW: QUEUE SYSTEM CONFIGURATION =====
   enable_queue_system: true    # Enable the queue system
-  max_queue_size: 10          # Maximum 10 jobs in queue
-  print_delay_ms: 2000        # 2 second delay between jobs
+  max_queue_size: 15          # Maximum 15 jobs in queue (increased with DTR)
+  print_delay_ms: 300         # 300ms delay between jobs (reduced with DTR)
   auto_process_queue: true    # Automatically process queue in loop()
   
   # ===== DTR HANDSHAKING CONFIGURATION =====
   enable_dtr_handshaking: true  # Enable hardware flow control
-  dtr_pin: GPIO0                # Boot/Flash pin - connect to printer DTR pin
+  dtr_pin: GPIO4                # Boot/Flash pin - connect to printer DTR pin
 
 # Enhanced sensors with Queue statistics
 text_sensor:
@@ -598,7 +597,7 @@ button:
     on_press:
       - lambda: |-
           auto printer = id(my_thermal_printer);
-          PrintResult result = printer->queue_separator(0);
+          auto result = printer->queue_separator(0);
 
   # ===== NEW: QUEUE MANAGEMENT BUTTONS =====
   
@@ -630,7 +629,7 @@ button:
           status_text += "DTR Enabled: " + std::string(printer->is_dtr_enabled() ? "YES" : "NO") + "\n";
           status_text += "===================";
           
-          PrintResult result = printer->queue_text(status_text.c_str(), 1, 0, false, 1); // Priority 1
+                      auto result = printer->queue_text(status_text.c_str(), 1, 0, false, 1); // Priority 1
 
   - platform: template
     name: "Emergency Test Print"
@@ -642,9 +641,9 @@ button:
           
           // Use immediate emergency printing
           std::string emergency_msg = "🚨 EMERGENCY TEST\n" + to_string(millis()) + "ms";
-          PrintResult result = printer->print_immediate(emergency_msg.c_str(), 3, 1, true);
+          auto result = printer->print_immediate(emergency_msg.c_str(), 3, 1, true);
           
-          if (result == PrintResult::SUCCESS) {
+          if (result == esphome::thermal_printer::PrintResult::SUCCESS) {
             ESP_LOGI("thermal_printer", "Emergency test print successful");
           } else {
             ESP_LOGW("thermal_printer", "Emergency test print failed: %d", (int)result);
@@ -666,9 +665,9 @@ button:
             dtr_stats += "DTR Status: ENABLED\n";
             dtr_stats += "=====================";
             
-            PrintResult result = printer->queue_text(dtr_stats.c_str(), 1, 0, false, 1);
+            auto result = printer->queue_text(dtr_stats.c_str(), 1, 0, false, 1);
           } else {
-            PrintResult result = printer->queue_text("DTR: DISABLED", 1, 1, false, 1);
+            auto result = printer->queue_text("DTR: DISABLED", 1, 1, false, 1);
           }
 
   - platform: template
@@ -680,10 +679,6 @@ button:
           auto printer = id(my_thermal_printer);
           printer->reset_dtr_stats();
           ESP_LOGI("thermal_printer", "DTR statistics reset");
-
-web_server:
-  port: 80
-  version: 2
 
 # Hardware Setup Instructions:
 # 
