@@ -45,11 +45,7 @@ uart:
   parity: NONE
   stop_bits: 1
 
-# Enhanced Home Assistant API with DTR-optimized services
-api:
-  encryption:
-    key: !secret api_encryption_key
-# Enhanced Home Assistant API with Queue System Services
+# Enhanced Home Assistant API with Queue System Services & DTR
 api:
   encryption:
     key: !secret api_encryption_key
