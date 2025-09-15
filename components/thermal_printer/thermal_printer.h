@@ -5,6 +5,7 @@
 #include "esphome/core/log.h"
 #include "esphome/core/gpio.h"
 #include <queue>
+#include <functional>
 
 namespace esphome {
 namespace thermal_printer {
@@ -67,31 +68,33 @@ struct PrinterStatus {
   uint32_t dtr_timeouts;
 };
 
-// ===== NEW: PRINT JOB QUEUE SYSTEM =====
+// ===== PRINT JOB QUEUE SYSTEM =====
+
+enum class JobType {
+  TEXT,
+  BARCODE,
+  QR_CODE,
+  FEED,
+  COMMAND,
+  TWO_COLUMN,
+  TABLE_ROW
+};
+
 struct PrintJob {
-  enum JobType {
-    TEXT = 0,
-    TWO_COLUMN = 1,
-    BARCODE = 2,
-    QR_CODE = 3,
-    FEED_PAPER = 4,
-    SEPARATOR = 5,
-    TABLE_ROW = 6,
-    ROTATED_TEXT = 7
-  };
-  
   JobType type;
-  std::string data1;        // Primary text/data
-  std::string data2;        // Secondary data (right column, etc.)
-  std::string data3;        // Tertiary data (third column)
-  uint8_t param1;           // Size, type, alignment, etc.
-  uint8_t param2;           // Error correction, rotation, etc.
-  bool param3;              // Bold, fill dots, header, etc.
-  uint32_t timestamp;       // When job was queued
-  uint8_t priority;         // Job priority (0=normal, 1=high, 2=emergency)
+  std::string data;
+  std::string data2;  // For two-column or table row
+  std::string data3;  // For table row third column
+  uint8_t param1;     // Size, lines, etc.
+  uint8_t param2;     // Alignment, error correction, etc.
+  bool flag1;         // Bold, fill_dots, etc.
+  bool flag2;         // Underline, header, etc.
+  bool flag3;         // Inverse, etc.
+  uint32_t timestamp;
   
-  PrintJob() : type(TEXT), param1(0), param2(0), param3(false), 
-               timestamp(0), priority(0) {}
+  PrintJob() : type(JobType::TEXT), param1(0), param2(0), 
+               flag1(false), flag2(false), flag3(false), 
+               timestamp(0) {}
 };
 
 class ThermalPrinterComponent : public Component, public uart::UARTDevice, public Print {
@@ -195,35 +198,32 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   void write_byte_with_flow_control(uint8_t byte);
   void write_bytes_with_flow_control(const uint8_t *data, size_t length);
 
-  // ===== NEW: QUEUE MANAGEMENT METHODS =====
+  // ===== PRINT QUEUE SYSTEM =====
   
-  // Queue operations
-  PrintResult queue_print_job(const PrintJob& job);
-  void process_print_queue();
-  void clear_print_queue();
-  bool is_printer_busy() const { return printer_busy_; }
-  uint8_t get_queue_length() const { return print_queue_.size(); }
-  
-  // Queue configuration
+  // Queue management - INLINE DEFINITIONS
   void set_print_delay(uint32_t delay_ms) { print_delay_ms_ = delay_ms; }
   void set_max_queue_size(uint8_t max_size) { max_queue_size_ = max_size; }
   void enable_auto_queue_processing(bool enable) { auto_process_queue_ = enable; }
   
-  // Queue statistics
+  // Queue status - INLINE DEFINITIONS  
+  uint32_t get_queue_size() const { return print_queue_.size(); }
   uint32_t get_total_jobs_processed() const { return total_jobs_processed_; }
   uint32_t get_jobs_dropped() const { return jobs_dropped_; }
-  float get_average_job_time() const;
+  bool is_queue_full() const { return print_queue_.size() >= max_queue_size_; }
+  bool is_processing() const { return is_processing_job_; }
   
-  // Convenience methods for queueing common jobs
-  PrintResult queue_text(const char* text, uint8_t size = 2, uint8_t align = 0, bool bold = false, uint8_t priority = 0);
-  PrintResult queue_two_column(const char* left, const char* right, bool dots = true, char size = 'S', uint8_t priority = 0);
-  PrintResult queue_barcode(uint8_t type, const char* data, uint8_t priority = 0);
-  PrintResult queue_qr_code(const char* data, uint8_t size = 3, uint8_t error_correction = 1, uint8_t priority = 0);
-  PrintResult queue_separator(uint8_t priority = 0);
-  PrintResult queue_feed(uint8_t lines = 1, uint8_t priority = 0);
+  // Queue operations - DECLARATIONS ONLY (implemented in .cpp)
+  PrintResult queue_text_job(const char* text, uint8_t size = 2, uint8_t alignment = 0, 
+                             bool bold = false, bool underline = false, bool inverse = false);
+  PrintResult queue_barcode_job(const char* data, uint8_t barcode_type);
+  PrintResult queue_qr_job(const char* data, uint8_t size = 3, uint8_t error_correction = 1);
+  PrintResult queue_feed_job(uint8_t lines);
+  PrintResult queue_two_column_job(const char* left, const char* right, bool fill_dots = true, char size = 'S');
+  PrintResult queue_table_row_job(const char* col1, const char* col2, const char* col3 = nullptr, bool header = false);
   
-  // Emergency/immediate printing (bypasses queue)
-  PrintResult print_immediate(const char* text, uint8_t size = 2, uint8_t align = 1, bool bold = true);
+  void process_queue();
+  void clear_queue();
+  void flush_queue_and_wait();
 
  protected:
   uint32_t last_paper_check_{0};
@@ -248,29 +248,25 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   uint32_t resume_time_micros_{0};
   uint32_t dtr_timeout_count_{0};
   
-  // Timing constants for DTR
-  uint32_t byte_time_micros_{416};
-  uint32_t dot_print_time_micros_{33};
-  uint32_t dot_feed_time_micros_{333};
+  // Timing constants for DTR (based on Adafruit library calculations)
+  uint32_t byte_time_micros_{416};    // Time per byte at 19200 baud: 1000000/19200*10 ≈ 520us, reduced for safety
+  uint32_t dot_print_time_micros_{33}; // Time to print one pixel line
+  uint32_t dot_feed_time_micros_{333}; // Time to feed one pixel line
   
   // Performance tracking
   uint32_t total_bytes_sent_{0};
   uint32_t dtr_waits_{0};
   uint32_t timeout_waits_{0};
 
-  // ===== NEW: QUEUE SYSTEM VARIABLES =====
+  // ===== PRINT QUEUE VARIABLES =====
   std::queue<PrintJob> print_queue_;
-  bool printer_busy_{false};
+  uint8_t max_queue_size_{10};
+  uint32_t print_delay_ms_{500};
   bool auto_process_queue_{true};
-  uint32_t last_print_time_{0};
-  uint32_t print_delay_ms_{2000};        // 2 second delay between jobs
-  uint8_t max_queue_size_{10};           // Maximum jobs in queue
-  
-  // Queue statistics
+  bool is_processing_job_{false};
+  uint32_t last_job_time_{0};
   uint32_t total_jobs_processed_{0};
   uint32_t jobs_dropped_{0};
-  uint32_t total_processing_time_{0};
-  uint32_t current_job_start_time_{0};
 
   // Helper methods for paper tracking
   void track_print_operation(uint16_t chars, uint8_t lines = 0, uint8_t feeds = 0);
@@ -286,16 +282,15 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   void write_bytes(uint8_t a, uint8_t b, uint8_t c);
   void write_bytes(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
   
-  // ===== NEW: QUEUE HELPER METHODS =====
-  void execute_print_job(const PrintJob& job);
-  bool should_process_queue();
-  void update_queue_statistics(uint32_t job_duration);
-  PrintJob create_text_job(const char* text, uint8_t size, uint8_t align, bool bold, uint8_t priority);
-  
-  // DTR helper methods
+  // ===== DTR HELPER METHODS =====
   void initialize_dtr_timings();
   void update_performance_stats();
   uint32_t calculate_operation_time_micros(uint8_t operation_type, uint8_t data_length = 1);
+  
+  // ===== PRINT QUEUE HELPER METHODS =====
+  void execute_print_job(const PrintJob& job);
+  bool add_job_to_queue(const PrintJob& job);
+  void log_queue_stats();
 };
 
 }  // namespace thermal_printer
