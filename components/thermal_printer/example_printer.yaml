@@ -49,9 +49,215 @@ uart:
 api:
   encryption:
     key: !secret api_encryption_key
+# Enhanced Home Assistant API with Queue System Services
+api:
+  encryption:
+    key: !secret api_encryption_key
    
   actions:
-    # Enhanced text printing with DTR optimization
+    # ===== NEW: QUEUE-BASED SERVICES =====
+    
+    # Queue text printing (recommended for most use cases)
+    - action: queue_print_text
+      variables:
+        message: string
+        text_size: string
+        alignment: string
+        bold: bool
+        underline: bool
+        inverse: bool
+        priority: int
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            
+            uint8_t size = 2; // Default medium
+            if (text_size == "S") size = 1;
+            else if (text_size == "M") size = 2;
+            else if (text_size == "L") size = 3;
+            
+            uint8_t align = 0; // Default left
+            if (alignment == "C") align = 1;
+            else if (alignment == "R") align = 2;
+            
+            uint8_t job_priority = priority > 0 ? priority : 0;
+            
+            PrintResult result = printer->queue_text(message.c_str(), size, align, bold, job_priority);
+            
+            if (result == PrintResult::SUCCESS) {
+              ESP_LOGI("thermal_printer", "Text queued: '%s' (queue size: %d)", 
+                       message.c_str(), printer->get_queue_length());
+            } else {
+              ESP_LOGW("thermal_printer", "Failed to queue text: result=%d", (int)result);
+            }
+
+    # Queue two-column printing
+    - action: queue_two_column
+      variables:
+        left_text: string
+        right_text: string
+        fill_dots: bool
+        text_size: string
+        priority: int
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            
+            char size_char = 'S';
+            if (text_size == "M") size_char = 'M';
+            else if (text_size == "L") size_char = 'L';
+            
+            uint8_t job_priority = priority > 0 ? priority : 0;
+            
+            PrintResult result = printer->queue_two_column(
+              left_text.c_str(), right_text.c_str(), fill_dots, size_char, job_priority);
+            
+            ESP_LOGI("thermal_printer", "Two-column queued: '%s' | '%s' (queue: %d)", 
+                     left_text.c_str(), right_text.c_str(), printer->get_queue_length());
+
+    # Queue barcode printing
+    - action: queue_barcode
+      variables:
+        barcode_type: int
+        barcode_data: string
+        priority: int
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            uint8_t job_priority = priority > 0 ? priority : 0;
+            
+            PrintResult result = printer->queue_barcode(barcode_type, barcode_data.c_str(), job_priority);
+            ESP_LOGI("thermal_printer", "Barcode queued: type=%d, data='%s'", barcode_type, barcode_data.c_str());
+
+    # Queue QR code printing
+    - action: queue_qr_code
+      variables:
+        data: string
+        size: int
+        error_correction: int
+        priority: int
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            uint8_t job_priority = priority > 0 ? priority : 0;
+            
+            PrintResult result = printer->queue_qr_code(data.c_str(), size, error_correction, job_priority);
+            ESP_LOGI("thermal_printer", "QR code queued: size=%d, data length=%d", size, strlen(data.c_str()));
+
+    # Queue separator line
+    - action: queue_separator
+      variables:
+        priority: int
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            uint8_t job_priority = priority > 0 ? priority : 0;
+            PrintResult result = printer->queue_separator(job_priority);
+
+    # Queue paper feed
+    - action: queue_feed_paper
+      variables:
+        lines: int
+        priority: int
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            uint8_t job_priority = priority > 0 ? priority : 0;
+            PrintResult result = printer->queue_feed(lines, job_priority);
+
+    # ===== EMERGENCY/IMMEDIATE SERVICES =====
+    
+    # Emergency print (bypasses queue for urgent messages)
+    - action: print_text_immediate
+      variables:
+        message: string
+        text_size: string
+        alignment: string
+        bold: bool
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            
+            uint8_t size = 2;
+            if (text_size == "S") size = 1;
+            else if (text_size == "M") size = 2;
+            else if (text_size == "L") size = 3;
+            
+            uint8_t align = 1; // Default center for emergencies
+            if (alignment == "L") align = 0;
+            else if (alignment == "R") align = 2;
+            
+            PrintResult result = printer->print_immediate(message.c_str(), size, align, bold);
+            
+            if (result == PrintResult::SUCCESS) {
+              ESP_LOGI("thermal_printer", "Emergency print successful: '%s'", message.c_str());
+            } else {
+              ESP_LOGW("thermal_printer", "Emergency print failed: result=%d", (int)result);
+            }
+
+    # ===== QUEUE MANAGEMENT SERVICES =====
+    
+    # Clear print queue
+    - action: clear_print_queue
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            printer->clear_print_queue();
+            ESP_LOGI("thermal_printer", "Print queue cleared");
+
+    # Set print delay
+    - action: set_print_delay
+      variables:
+        delay_ms: int
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            printer->set_print_delay(delay_ms);
+            ESP_LOGI("thermal_printer", "Print delay set to %dms", delay_ms);
+
+    # Batch print multiple items
+    - action: batch_print_text
+      variables:
+        items: string  # Items separated by "|"
+        text_size: string
+        priority: int
+      then:
+        - lambda: |-
+            auto printer = id(my_thermal_printer);
+            
+            uint8_t size = 2;
+            if (text_size == "S") size = 1;
+            else if (text_size == "M") size = 2;
+            else if (text_size == "L") size = 3;
+            
+            uint8_t job_priority = priority > 0 ? priority : 0;
+            
+            // Simple batch processing - parse items separated by "|"
+            std::string items_str = items;
+            size_t pos = 0;
+            std::string delimiter = "|";
+            int item_count = 0;
+            
+            while ((pos = items_str.find(delimiter)) != std::string::npos) {
+              std::string item = items_str.substr(0, pos);
+              if (!item.empty()) {
+                PrintResult result = printer->queue_text(item.c_str(), size, 0, false, job_priority);
+                item_count++;
+              }
+              items_str.erase(0, pos + delimiter.length());
+            }
+            
+            // Process last item
+            if (!items_str.empty()) {
+              PrintResult result = printer->queue_text(items_str.c_str(), size, 0, false, job_priority);
+              item_count++;
+            }
+            
+            ESP_LOGI("thermal_printer", "Batch queued: %d items", item_count);
+
+    # ===== ORIGINAL SERVICES (Now immediate for backward compatibility) =====
+    
+    # Original immediate services for compatibility
     - action: print_text
       variables:
         message: string
@@ -65,211 +271,38 @@ api:
         - lambda: |-
             auto printer = id(my_thermal_printer);
             
-            // DTR handshaking will handle timing automatically
-            if (text_size == "S") printer->set_text_size(1);
-            else if (text_size == "M") printer->set_text_size(2);
-            else if (text_size == "L") printer->set_text_size(3);
+            // Use immediate printing for backward compatibility
+            uint8_t size = 2;
+            if (text_size == "S") size = 1;
+            else if (text_size == "M") size = 2;
+            else if (text_size == "L") size = 3;
             
-            if (alignment == "L") printer->justify('L');
-            else if (alignment == "C") printer->justify('C');
-            else if (alignment == "R") printer->justify('R');
+            uint8_t align = 0;
+            if (alignment == "C") align = 1;
+            else if (alignment == "R") align = 2;
             
-            printer->bold_on(bold);
-            printer->underline_on(underline);
-            printer->inverse_on(inverse);
-            
-            if (rotation > 0) {
-              printer->print_rotated_text(message.c_str(), rotation);
-            } else {
-              printer->print_text(message.c_str());
-              printer->println();
-            }
-            
-            printer->bold_off();
-            printer->underline_off();
-            printer->inverse_off();
-            printer->justify('L');
+            PrintResult result = printer->print_immediate(message.c_str(), size, align, bold);
 
-    # Fast rotated text - optimized for DTR handshaking
-    - action: print_rotated_text
-      variables:
-        message: string
-        rotation: int
-        size: string
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            
-            ESP_LOGI("thermal_printer", "DTR-optimized rotation print: '%s'", message.c_str());
-            
-            // Set size if provided (but prefer small for rotation reliability)
-            if (!size.empty()) {
-              if (size == "S" || size == "s") {
-                printer->set_text_size(1);
-              } else {
-                ESP_LOGW("thermal_printer", "Using small size for rotation stability");
-                printer->set_text_size(1);
-              }
-            }
-            
-            printer->print_rotated_text(message.c_str(), rotation);
-
-    # DTR-optimized QR codes
-    - action: print_qr_code
-      variables:
-        data: string
-        size: int
-        error_correction: int
-        label: string
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            
-            if (!label.empty()) {
-              printer->justify('C');
-              printer->set_text_size(1);
-              printer->print_text(label.c_str());
-              printer->feed(1);
-            }
-            
-            ESP_LOGI("thermal_printer", "DTR-optimized QR code: size=%d, length=%d", size, strlen(data.c_str()));
-            printer->print_qr_code(data.c_str(), size, error_correction);
-
-    # Enhanced two-column printing with DTR flow control
-    - action: print_two_column
-      variables:
-        left_text: string
-        right_text: string
-        fill_dots: bool
-        text_size: string
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            char size_char = 'S';
-            if (text_size == "M") size_char = 'M';
-            else if (text_size == "L") size_char = 'L';
-            
-            ESP_LOGI("thermal_printer", "DTR two-column: '%s' | '%s'", left_text.c_str(), right_text.c_str());
-            printer->print_two_column(left_text.c_str(), right_text.c_str(), fill_dots, size_char);
-
-    # DTR Statistics and debugging
-    - action: print_dtr_stats
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            
-            if (printer->is_dtr_enabled()) {
-              printer->set_text_size(1);
-              printer->justify('L');
-              printer->print_text("=== DTR STATISTICS ===");
-              printer->feed(1);
-              
-              char stats_line[64];
-              snprintf(stats_line, sizeof(stats_line), "DTR Timeouts: %u", printer->get_dtr_timeouts());
-              printer->print_text(stats_line);
-              printer->feed(1);
-              
-              printer->print_text("DTR: ENABLED");
-              printer->feed(1);
-              
-              printer->print_text("====================");
-              printer->feed(2);
-              
-              ESP_LOGI("thermal_printer", "DTR Stats - Timeouts: %u", printer->get_dtr_timeouts());
-            } else {
-              printer->print_text("DTR: DISABLED");
-              printer->feed(2);
-            }
-
-    # Reset DTR statistics
-    - action: reset_dtr_stats
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            printer->reset_dtr_stats();
-            ESP_LOGI("thermal_printer", "DTR statistics reset");
-
-    # Test DTR responsiveness
-    - action: test_dtr_performance
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            
-            if (!printer->is_dtr_enabled()) {
-              ESP_LOGW("thermal_printer", "DTR not enabled - cannot test performance");
-              return;
-            }
-            
-            ESP_LOGI("thermal_printer", "Testing DTR performance...");
-            
-            // Print test pattern to stress DTR handshaking
-            printer->set_text_size(1);
-            printer->justify('L');
-            printer->print_text("DTR Performance Test");
-            printer->feed(1);
-            
-            uint32_t start_time = millis();
-            
-            // Rapid character sequence
-            for (int i = 0; i < 50; i++) {
-              char test_char[2] = {(char)('0' + (i % 10)), '\0'};
-              printer->print_text(test_char);
-            }
-            printer->feed(1);
-            
-            uint32_t test_duration = millis() - start_time;
-            
-            char result_line[64];
-            snprintf(result_line, sizeof(result_line), "Test Duration: %ums", test_duration);
-            printer->print_text(result_line);
-            printer->feed(1);
-            
-            snprintf(result_line, sizeof(result_line), "DTR Timeouts: %u", printer->get_dtr_timeouts());
-            printer->print_text(result_line);
-            printer->feed(3);
-            
-            ESP_LOGI("thermal_printer", "DTR performance test complete: %ums, timeouts: %u", 
-                     test_duration, printer->get_dtr_timeouts());
-
-    # All original services preserved with DTR optimization
-    - action: print_barcode
-      variables:
-        barcode_type: int
-        barcode_data: string
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            ESP_LOGI("thermal_printer", "DTR-optimized barcode: type=%d", barcode_type);
-            printer->print_barcode(barcode_type, barcode_data.c_str());
-
-    - action: feed_paper
-      variables:
-        lines: int
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            ESP_LOGD("thermal_printer", "DTR feed: %d lines", lines);
-            printer->feed(lines);
-
+    # Other original services remain for compatibility
     - action: wake_printer
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            ESP_LOGI("thermal_printer", "Waking printer (DTR-aware)");
+            ESP_LOGI("thermal_printer", "Waking printer");
             printer->wake();
 
     - action: sleep_printer
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            ESP_LOGI("thermal_printer", "Sleep printer (DTR-aware)");
+            ESP_LOGI("thermal_printer", "Sleep printer");
             printer->sleep();
 
     - action: test_print
       then:
         - lambda: |-
             auto printer = id(my_thermal_printer);
-            ESP_LOGI("thermal_printer", "Test print (DTR-optimized)");
+            ESP_LOGI("thermal_printer", "Test print");
             printer->test();
 
     - action: reset_paper_usage
@@ -286,32 +319,7 @@ api:
             auto printer = id(my_thermal_printer);
             printer->set_paper_roll_length(length_mm);
 
-    - action: recover_printer
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            ESP_LOGI("thermal_printer", "Printer recovery (DTR-aware)");
-            printer->recover_from_error();
-
-    # Table printing support
-    - action: print_table_row
-      variables:
-        col1: string
-        col2: string
-        col3: string
-        header: bool
-      then:
-        - lambda: |-
-            auto printer = id(my_thermal_printer);
-            if (header) {
-              printer->bold_on();
-            }
-            printer->print_table_row(col1.c_str(), col2.c_str(), col3.c_str());
-            if (header) {
-              printer->bold_off();
-            }
-
-# Enhanced Thermal Printer Configuration with DTR
+# Enhanced Thermal Printer Configuration with Queue System
 thermal_printer:
   id: my_thermal_printer
   uart_id: thermal_uart
@@ -323,23 +331,22 @@ thermal_printer:
   enable_qr_codes: true
   startup_message: true
   
-  # Heat Configuration (optimized for DTR)
+  # Heat Configuration (optimized for reliability)
   heat_dots: 7        # Conservative for reliability
   heat_time: 80       # Moderate heat time
-  heat_interval: 2    # Fast heat interval (DTR will handle timing)
+  heat_interval: 2    # Fast heat interval
+  
+  # ===== NEW: QUEUE SYSTEM CONFIGURATION =====
+  enable_queue_system: true    # Enable the queue system
+  max_queue_size: 10          # Maximum 10 jobs in queue
+  print_delay_ms: 2000        # 2 second delay between jobs
+  auto_process_queue: true    # Automatically process queue in loop()
   
   # ===== DTR HANDSHAKING CONFIGURATION =====
   enable_dtr_handshaking: true  # Enable hardware flow control
-  dtr_pin: GPIO4                # Boot/Flash pin - connect to printer DTR pin
-  
-  # Alternative DTR pin options (if GPIO0 causes boot issues):
-  # dtr_pin: GPIO5   # D1 on D1 Mini (recommended alternative)
-  # dtr_pin: GPIO12  # D6 on D1 Mini
-  # dtr_pin: GPIO13  # D7 on D1 Mini  
-  # dtr_pin: GPIO14  # D5 on D1 Mini
-  # dtr_pin: GPIO2   # Built-in LED pin (disable status_led if used)
+  dtr_pin: GPIO0                # Boot/Flash pin - connect to printer DTR pin
 
-# Enhanced sensors with DTR statistics
+# Enhanced sensors with Queue statistics
 text_sensor:
   - platform: thermal_printer
     thermal_printer_id: my_thermal_printer
@@ -347,24 +354,21 @@ text_sensor:
     id: paper_status
 
   - platform: template
-    name: "Printer Status"
+    name: "Printer Status Enhanced"
     id: printer_status_enhanced
     lambda: |-
       auto printer = id(my_thermal_printer);
-      if (printer->is_dtr_enabled()) {
-        if (printer->has_paper()) {
-          return std::string("Ready - DTR Enabled");
-        } else {
-          return std::string("Paper Out - DTR Enabled");
-        }
+      
+      if (printer->is_printer_busy()) {
+        return std::string("Printing");
+      } else if (printer->get_queue_length() > 0) {
+        return std::string("Queued (" + to_string(printer->get_queue_length()) + ")");
+      } else if (printer->has_paper()) {
+        return std::string("Ready");
       } else {
-        if (printer->has_paper()) {
-          return std::string("Ready - No DTR");
-        } else {
-          return std::string("Paper Out - No DTR");
-        }
+        return std::string("Paper Out");
       }
-    update_interval: 30s
+    update_interval: 5s
 
 binary_sensor:
   - platform: thermal_printer
@@ -373,7 +377,14 @@ binary_sensor:
     id: paper_loaded
 
   - platform: template
-    name: "DTR Handshaking"
+    name: "Printer Busy"
+    id: printer_busy
+    lambda: |-
+      return id(my_thermal_printer)->is_printer_busy();
+    update_interval: 2s
+
+  - platform: template
+    name: "DTR Enabled"
     id: dtr_enabled
     device_class: connectivity
     lambda: |-
@@ -387,6 +398,46 @@ sensor:
     name: "WiFi Signal"
     update_interval: 60s
 
+  # ===== NEW: QUEUE SYSTEM SENSORS =====
+  
+  - platform: template
+    name: "Print Queue Length"
+    id: print_queue_length
+    icon: mdi:printer-pos
+    lambda: |-
+      return id(my_thermal_printer)->get_queue_length();
+    update_interval: 5s
+
+  - platform: template
+    name: "Total Jobs Processed"
+    id: total_jobs_processed
+    icon: mdi:counter
+    state_class: total_increasing
+    lambda: |-
+      return id(my_thermal_printer)->get_total_jobs_processed();
+    update_interval: 30s
+
+  - platform: template
+    name: "Jobs Dropped"
+    id: jobs_dropped
+    icon: mdi:alert-circle
+    state_class: total_increasing
+    lambda: |-
+      return id(my_thermal_printer)->get_jobs_dropped();
+    update_interval: 30s
+
+  - platform: template
+    name: "Average Job Time"
+    id: average_job_time
+    icon: mdi:timer
+    unit_of_measurement: "ms"
+    accuracy_decimals: 1
+    lambda: |-
+      return id(my_thermal_printer)->get_average_job_time();
+    update_interval: 60s
+
+  # ===== PAPER USAGE SENSORS =====
+  
   - platform: template
     name: "Paper Usage (mm)"
     id: paper_usage_mm
@@ -426,7 +477,8 @@ sensor:
       return id(my_thermal_printer)->get_characters_printed();
     update_interval: 30s
 
-  # NEW: DTR Performance Sensors
+  # ===== DTR PERFORMANCE SENSORS =====
+  
   - platform: template
     name: "DTR Timeouts"
     id: dtr_timeouts
@@ -434,23 +486,6 @@ sensor:
     state_class: total_increasing
     lambda: |-
       return id(my_thermal_printer)->get_dtr_timeouts();
-    update_interval: 60s
-
-  - platform: template
-    name: "Print Success Rate"
-    id: print_success_rate
-    icon: mdi:percent
-    unit_of_measurement: "%"
-    accuracy_decimals: 1
-    lambda: |-
-      auto printer = id(my_thermal_printer);
-      uint32_t total_ops = printer->get_lines_printed();
-      uint32_t timeouts = printer->get_dtr_timeouts();
-      
-      if (total_ops == 0) return 100.0f;
-      
-      float success_rate = ((float)(total_ops - timeouts) / total_ops) * 100.0f;
-      return success_rate > 0.0f ? success_rate : 0.0f;
     update_interval: 60s
 
 status_led:
@@ -471,22 +506,22 @@ switch:
       - lambda: |-
           id(my_thermal_printer)->sleep();
 
-  # NEW: DTR Control Switch
+  # ===== NEW: QUEUE CONTROL SWITCHES =====
+  
   - platform: template
-    name: "DTR Debug Mode"
-    id: dtr_debug_switch
-    icon: mdi:bug
+    name: "Auto Process Queue"
+    id: auto_process_queue_switch
+    icon: mdi:cog-clockwise
     optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
-      - logger.log:
-          level: DEBUG
-          tag: "thermal_printer"
-          format: "DTR Debug mode enabled"
+      - lambda: |-
+          id(my_thermal_printer)->enable_auto_queue_processing(true);
+          ESP_LOGI("thermal_printer", "Auto queue processing enabled");
     turn_off_action:
-      - logger.log:
-          level: INFO
-          tag: "thermal_printer" 
-          format: "DTR Debug mode disabled"
+      - lambda: |-
+          id(my_thermal_printer)->enable_auto_queue_processing(false);
+          ESP_LOGI("thermal_printer", "Auto queue processing disabled");
 
 number:
   - platform: template
@@ -503,6 +538,38 @@ number:
       - lambda: |-
           id(my_thermal_printer)->set_line_height(x);
 
+  # ===== NEW: QUEUE CONFIGURATION CONTROLS =====
+  
+  - platform: template
+    name: "Print Delay (seconds)"
+    id: print_delay_setting
+    icon: mdi:timer
+    min_value: 1
+    max_value: 10
+    initial_value: 2
+    step: 1
+    mode: box
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(my_thermal_printer)->set_print_delay(x * 1000); // Convert to milliseconds
+          ESP_LOGI("thermal_printer", "Print delay set to %.1f seconds", x);
+
+  - platform: template
+    name: "Max Queue Size"
+    id: max_queue_size_setting
+    icon: mdi:format-list-numbered
+    min_value: 2
+    max_value: 20
+    initial_value: 10
+    step: 1
+    mode: box
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(my_thermal_printer)->set_max_queue_size(x);
+          ESP_LOGI("thermal_printer", "Max queue size set to %.0f", x);
+
 select:
   - platform: template
     name: "Default Text Size"
@@ -514,16 +581,6 @@ select:
       - "Medium" 
       - "Large"
     initial_option: "Medium"
-    set_action:
-      - lambda: |-
-          auto printer = id(my_thermal_printer);
-          if (x == "Small") {
-            printer->set_text_size(1);
-          } else if (x == "Medium") {
-            printer->set_text_size(2);
-          } else if (x == "Large") {
-            printer->set_text_size(3);
-          }
 
 button:
   - platform: template
@@ -542,12 +599,60 @@ button:
     on_press:
       - lambda: |-
           auto printer = id(my_thermal_printer);
-          printer->justify('C');
-          printer->print_text("================================");
-          printer->feed(1);
-          printer->justify('L');
+          PrintResult result = printer->queue_separator(0);
 
-  # NEW: DTR Testing Buttons
+  # ===== NEW: QUEUE MANAGEMENT BUTTONS =====
+  
+  - platform: template
+    name: "Clear Print Queue"
+    id: clear_queue_button
+    icon: mdi:delete-sweep
+    on_press:
+      - lambda: |-
+          auto printer = id(my_thermal_printer);
+          printer->clear_print_queue();
+          ESP_LOGI("thermal_printer", "Print queue cleared manually");
+
+  - platform: template
+    name: "Print Queue Status"
+    id: queue_status_button
+    icon: mdi:information
+    on_press:
+      - lambda: |-
+          auto printer = id(my_thermal_printer);
+          
+          // Queue a status report
+          std::string status_text = "=== QUEUE STATUS ===\n";
+          status_text += "Queue Length: " + to_string(printer->get_queue_length()) + "\n";
+          status_text += "Jobs Processed: " + to_string(printer->get_total_jobs_processed()) + "\n";
+          status_text += "Jobs Dropped: " + to_string(printer->get_jobs_dropped()) + "\n";
+          status_text += "Avg Job Time: " + to_string((int)printer->get_average_job_time()) + "ms\n";
+          status_text += "Printer Busy: " + std::string(printer->is_printer_busy() ? "YES" : "NO") + "\n";
+          status_text += "DTR Enabled: " + std::string(printer->is_dtr_enabled() ? "YES" : "NO") + "\n";
+          status_text += "===================";
+          
+          PrintResult result = printer->queue_text(status_text.c_str(), 1, 0, false, 1); // Priority 1
+
+  - platform: template
+    name: "Emergency Test Print"
+    id: emergency_test_button
+    icon: mdi:alarm-light
+    on_press:
+      - lambda: |-
+          auto printer = id(my_thermal_printer);
+          
+          // Use immediate emergency printing
+          std::string emergency_msg = "🚨 EMERGENCY TEST\n" + to_string(millis()) + "ms";
+          PrintResult result = printer->print_immediate(emergency_msg.c_str(), 3, 1, true);
+          
+          if (result == PrintResult::SUCCESS) {
+            ESP_LOGI("thermal_printer", "Emergency test print successful");
+          } else {
+            ESP_LOGW("thermal_printer", "Emergency test print failed: %d", (int)result);
+          }
+
+  # ===== DTR TESTING BUTTONS =====
+  
   - platform: template
     name: "Print DTR Stats"
     id: dtr_stats_button
@@ -557,71 +662,15 @@ button:
           auto printer = id(my_thermal_printer);
           
           if (printer->is_dtr_enabled()) {
-            printer->set_text_size(1);
-            printer->justify('L');
-            printer->print_text("=== DTR STATISTICS ===");
-            printer->feed(1);
+            std::string dtr_stats = "=== DTR STATISTICS ===\n";
+            dtr_stats += "DTR Timeouts: " + to_string(printer->get_dtr_timeouts()) + "\n";
+            dtr_stats += "DTR Status: ENABLED\n";
+            dtr_stats += "=====================";
             
-            char stats_line[64];
-            snprintf(stats_line, sizeof(stats_line), "DTR Timeouts: %u", printer->get_dtr_timeouts());
-            printer->print_text(stats_line);
-            printer->feed(1);
-            
-            printer->print_text("DTR: ENABLED");
-            printer->feed(1);
-            
-            printer->print_text("====================");
-            printer->feed(2);
-            
-            ESP_LOGI("thermal_printer", "DTR Stats - Timeouts: %u", printer->get_dtr_timeouts());
+            PrintResult result = printer->queue_text(dtr_stats.c_str(), 1, 0, false, 1);
           } else {
-            printer->print_text("DTR: DISABLED");
-            printer->feed(2);
+            PrintResult result = printer->queue_text("DTR: DISABLED", 1, 1, false, 1);
           }
-
-  - platform: template
-    name: "Test DTR Performance"
-    id: dtr_performance_button
-    icon: mdi:speedometer
-    on_press:
-      - lambda: |-
-          auto printer = id(my_thermal_printer);
-          
-          if (!printer->is_dtr_enabled()) {
-            ESP_LOGW("thermal_printer", "DTR not enabled - cannot test performance");
-            return;
-          }
-          
-          ESP_LOGI("thermal_printer", "Testing DTR performance...");
-          
-          // Print test pattern to stress DTR handshaking
-          printer->set_text_size(1);
-          printer->justify('L');
-          printer->print_text("DTR Performance Test");
-          printer->feed(1);
-          
-          uint32_t start_time = millis();
-          
-          // Rapid character sequence
-          for (int i = 0; i < 50; i++) {
-            char test_char[2] = {(char)('0' + (i % 10)), '\0'};
-            printer->print_text(test_char);
-          }
-          printer->feed(1);
-          
-          uint32_t test_duration = millis() - start_time;
-          
-          char result_line[64];
-          snprintf(result_line, sizeof(result_line), "Test Duration: %ums", test_duration);
-          printer->print_text(result_line);
-          printer->feed(1);
-          
-          snprintf(result_line, sizeof(result_line), "DTR Timeouts: %u", printer->get_dtr_timeouts());
-          printer->print_text(result_line);
-          printer->feed(3);
-          
-          ESP_LOGI("thermal_printer", "DTR performance test complete: %ums, timeouts: %u", 
-                   test_duration, printer->get_dtr_timeouts());
 
   - platform: template
     name: "Reset DTR Statistics"
@@ -637,7 +686,7 @@ web_server:
   port: 80
   version: 2
 
-# Hardware Setup Instructions - UPDATED for your pin choice:
+# Hardware Setup Instructions:
 # 
 # 1. UART CONNECTION (Hardware UART0):
 #    - ESP8266 TX (GPIO1) -> Printer RX  [BEST PERFORMANCE]
@@ -645,24 +694,42 @@ web_server:
 #    - ESP8266 GND -> Printer GND
 #    - Printer VCC -> 5V external power supply
 #
-# 2. DTR CONNECTION:
+# 2. DTR CONNECTION (OPTIONAL):
 #    - Printer DTR pin -> ESP8266 GPIO0 (Boot/Flash pin)
 #    - Requires opening printer case and soldering wire to DTR pad
 #    - Some newer printers have DTR exposed on connector
-# 
-# 3. IMPORTANT GPIO0 (Boot Pin) CONSIDERATIONS:
 #    - MUST be HIGH during boot (internal pullup helps)
-#    - Disconnect DTR wire during firmware flashing
-#    - Pull DTR high with 10kΩ resistor if experiencing boot issues
-#    - Works perfectly as DTR input during normal operation
+#    - Disconnect DTR wire during firmware flashing if needed
 #
-# 4. VERIFICATION:
-#    - "DTR Handshaking" sensor should show "on" 
-#    - "DTR Timeouts" sensor should stay at 0 or very low
-#    - Test with "Test DTR Performance" button
+# 3. QUEUE SYSTEM FEATURES:
+#    - Automatic rate limiting (2 second delay between jobs)
+#    - Up to 10 jobs can be queued
+#    - Emergency printing bypasses queue
+#    - Real-time queue monitoring
+#    - Statistics tracking for performance analysis
 #
-# 5. TROUBLESHOOTING:
-#    - Boot issues: Add 10kΩ pullup resistor GPIO0 to 3.3V
-#    - Flash issues: Disconnect DTR wire during programming
-#    - High DTR timeouts: check wiring, printer firmware compatibility
-#    - Missing characters persist: DTR pin connection issue
+# 4. USAGE EXAMPLES:
+#
+#    # Normal printing (queued)
+#    service: esphome.thermal_printer_queue_print_text
+#    data:
+#      message: "Hello World!"
+#      text_size: "M"
+#      alignment: "C"
+#      bold: true
+#      priority: 0
+#
+#    # Emergency printing (immediate)
+#    service: esphome.thermal_printer_print_text_immediate
+#    data:
+#      message: "🚨 URGENT MESSAGE"
+#      text_size: "L"
+#      alignment: "C"
+#      bold: true
+#
+#    # Batch printing
+#    service: esphome.thermal_printer_batch_print_text
+#    data:
+#      items: "Line 1|Line 2|Line 3"
+#      text_size: "S"
+#      priority: 0
