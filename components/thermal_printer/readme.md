@@ -113,7 +113,7 @@ esphome run thermal_printer.yaml
 
 ```yaml
 # In Home Assistant automation
-- service: esphome.thermal_printer_print_text
+- action: esphome.thermal_printer_print_text
   data:
     text: "Hello World!"
     size: "M"          # S, M, or L
@@ -126,7 +126,7 @@ esphome run thermal_printer.yaml
 ### Barcode Printing
 
 ```yaml
-- service: esphome.thermal_printer_print_barcode
+- action: esphome.thermal_printer_print_barcode
   data:
     barcode_type: 8    # CODE128
     barcode_data: "123456789012"
@@ -136,13 +136,13 @@ esphome run thermal_printer.yaml
 
 ```yaml
 # Print receipt-style layouts
-- service: esphome.thermal_printer_print_two_column
+- action: esphome.thermal_printer_print_two_column
   data:
     left_text: "Coffee"
     right_text: "$3.50"
     fill_dots: true    # Creates: Coffee...........$3.50
 
-- service: esphome.thermal_printer_print_two_column
+- action: esphome.thermal_printer_print_two_column
   data:
     left_text: "Tax"
     right_text: "$0.25"
@@ -153,13 +153,13 @@ esphome run thermal_printer.yaml
 
 ```yaml
 # Three-column table
-- service: esphome.thermal_printer_print_table_row
+- action: esphome.thermal_printer_print_table_row
   data:
     col1: "Item"
     col2: "Qty"
     col3: "Price"
 
-- service: esphome.thermal_printer_print_table_row
+- action: esphome.thermal_printer_print_table_row
   data:
     col1: "Coffee"
     col2: "2"
@@ -173,10 +173,10 @@ esphome run thermal_printer.yaml
 sensor_value: "{{ states('sensor.thermal_printer_paper_usage_percent') }}%"
 
 # Reset paper usage counters
-- service: esphome.thermal_printer_reset_paper_usage
+- action: esphome.thermal_printer_reset_paper_usage
 
 # Set custom roll length (in mm)
-- service: esphome.thermal_printer_set_paper_roll_length
+- action: esphome.thermal_printer_set_paper_roll_length
   data:
     length_mm: 50000  # 50 meter roll
 ```
