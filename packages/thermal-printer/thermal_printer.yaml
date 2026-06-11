@@ -284,7 +284,7 @@ api:
         - lambda: |-
             auto printer = id(${printer_name}_component);
             std::string text = lines;
-            std::string sep = separator.empty() ? "\n" : separator;
+            std::string sep = separator.empty() ? std::string("\n") : std::string(separator);
             
             size_t pos = 0;
             size_t found = 0;
