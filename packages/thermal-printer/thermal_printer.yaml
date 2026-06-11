@@ -29,6 +29,8 @@
 #     heat_dots: "7"                           # Heat dots (1-15)
 #     heat_time: "80"                          # Heat time (50-200)
 #     heat_interval: "2"                       # Heat interval (1-10)
+#     startup_message: "true"                  # Print banner on boot
+#     auto_sleep: "true"                       # Sleep printer after 5 min idle
 
 # Default substitutions - any of these can be overridden from the device YAML
 substitutions:
@@ -44,6 +46,8 @@ substitutions:
   heat_dots: "7"
   heat_time: "80"
   heat_interval: "2"
+  startup_message: "true"
+  auto_sleep: "true"
 
 # External components - thermal printer with queue system
 external_components:
@@ -71,7 +75,8 @@ thermal_printer:
   # Basic Configuration
   paper_roll_length: ${paper_roll_length}
   line_height_calibration: 4.0
-  startup_message: true
+  startup_message: ${startup_message}
+  auto_sleep: ${auto_sleep}
   
   # Heat Configuration
   heat_dots: ${heat_dots}
