@@ -7,38 +7,17 @@ namespace thermal_printer {
 static const char *const BINARY_SENSOR_TAG = "thermal_printer.binary_sensor";
 
 void ThermalPrinterBinarySensor::setup() {
-  // Set up callback for paper status changes
-  if (this->parent_) {
-    this->parent_->set_paper_check_callback([this](bool has_paper) {
-      if (this->state != has_paper) {
-        this->publish_state(has_paper);
-        ESP_LOGD(BINARY_SENSOR_TAG, "Paper loaded: %s", has_paper ? "YES" : "NO");
-      }
-    });
-  }
-  
-  // Initial status check
-  if (this->parent_) {
-    bool has_paper = this->parent_->has_paper();
-    this->last_state_ = has_paper;
-    this->publish_state(has_paper);
-  }
-}
+  if (this->parent_ == nullptr)
+    return;
 
-void ThermalPrinterBinarySensor::loop() {
-  // Check paper status every 10 seconds
-  if (millis() - this->last_check_ > 10000) {
-    this->last_check_ = millis();
-    
-    if (this->parent_) {
-      bool current_status = this->parent_->has_paper();
-      if (current_status != this->last_state_) {
-        this->last_state_ = current_status;
-        this->publish_state(current_status);
-        ESP_LOGD(BINARY_SENSOR_TAG, "Paper status changed: %s", current_status ? "Loaded" : "Out");
-      }
-    }
-  }
+  // The parent component polls the printer; we just listen for changes
+  this->parent_->add_paper_check_callback([this](bool has_paper) {
+    this->publish_state(has_paper);
+    ESP_LOGD(BINARY_SENSOR_TAG, "Paper loaded: %s", has_paper ? "YES" : "NO");
+  });
+
+  // Publish initial state from the parent's cached status
+  this->publish_state(this->parent_->get_paper_status());
 }
 
 }  // namespace thermal_printer

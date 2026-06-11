@@ -1,8 +1,12 @@
+import logging
+
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import uart
 from esphome.const import CONF_ID
 from esphome import pins
+
+_LOGGER = logging.getLogger(__name__)
 
 CODEOWNERS = ["@user"]
 DEPENDENCIES = ["uart"]
@@ -119,40 +123,23 @@ def validate_dtr_settings(config):
         )
     
     if not enable_dtr and dtr_pin is not None:
-        raise cv.Invalid(
-            "DTR pin specified but DTR handshaking is disabled. "
-            "Either enable DTR handshaking or remove the dtr_pin configuration."
+        _LOGGER.warning(
+            "dtr_pin is configured but DTR handshaking is disabled; the pin will be ignored"
         )
-    
+
     return config
 
 def validate_queue_settings(config):
     """Validate print queue configuration"""
-    max_size = config.get(CONF_MAX_QUEUE_SIZE, 10)
     delay_ms = config.get(CONF_PRINT_DELAY_MS, 500)
-    
-    if max_size < 5:
-        raise cv.Invalid(
-            f"max_queue_size ({max_size}) too small. Minimum recommended: 5"
-        )
-    
-    if max_size > 50:
-        raise cv.Invalid(
-            f"max_queue_size ({max_size}) too large. Maximum recommended: 50 (memory constraints)"
-        )
-    
-    if delay_ms < 100:
-        raise cv.Invalid(
-            f"print_delay_ms ({delay_ms}) too small. Minimum recommended: 100ms"
-        )
-    
-    # Warn about very high delays
+
+    # Range limits are already enforced by the schema; just warn about slow setups
     if delay_ms > 5000:
-        import esphome._logging as logging
-        logging.warning(
-            f"print_delay_ms ({delay_ms}) is very high. This will make printing very slow."
+        _LOGGER.warning(
+            "print_delay_ms (%d) is very high. This will make printing very slow.",
+            delay_ms,
         )
-    
+
     return config
 
 # Apply all validation functions
@@ -173,9 +160,13 @@ async def to_code(config):
     # Basic configuration
     if CONF_PAPER_ROLL_LENGTH in config:
         cg.add(var.set_paper_roll_length(config[CONF_PAPER_ROLL_LENGTH]))
-    
+
     if CONF_LINE_HEIGHT_CALIBRATION in config:
         cg.add(var.set_line_height_calibration(config[CONF_LINE_HEIGHT_CALIBRATION]))
+
+    cg.add(var.set_chars_per_line(config[CONF_CHARS_PER_LINE]))
+    cg.add(var.set_startup_message(config[CONF_STARTUP_MESSAGE]))
+    cg.add(var.set_auto_sleep(config[CONF_AUTO_SLEEP]))
     
     # Heat configuration
     if CONF_HEAT_DOTS in config:
