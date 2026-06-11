@@ -1,5 +1,5 @@
 substitutions:
-  devicename: jura_coffee
+  devicename: jura-coffee
   friendly_name: Coffee Machine
   device_description: Jura E8 Coffee Machine in Kitchen
   device_icon: mdi:coffee
@@ -34,15 +34,19 @@ ota:
 logger:
   level: DEBUG
   logs:
-    jura: VERBOSE
+    jura: DEBUG
 
 captive_portal:
 
 # External component configuration
 external_components:
-  - source:
-      type: local
-      path: jura
+  - source: github://rlatimer4/esphome-components
+    components: [jura]
+  # Or, for local development, point at a directory that CONTAINS the
+  # jura component folder (e.g. my_components/jura/{__init__.py,jura.h,jura.cpp}):
+  # - source:
+  #     type: local
+  #     path: my_components
 
 # UART for Jura communication
 uart:
@@ -72,32 +76,23 @@ jura:
   update_interval: 60s
   timeout_ms: 5000
   
-  # Coffee counter sensors (only ones that work on E8)
+  # Coffee counter sensors (only ones that work on E8).
+  # state_class: total_increasing is the default for all counters.
   single_espresso:
     id: num_single_espresso
     name: "Single Espressos Made"
-    device_class: ""
-    state_class: "total_increasing"
   double_espresso:
     id: num_double_espresso
     name: "Double Espressos Made"
-    device_class: ""
-    state_class: "total_increasing"
   coffee:
     id: num_coffee
     name: "Coffees Made"
-    device_class: ""
-    state_class: "total_increasing"
   double_coffee:
     id: num_double_coffee
     name: "Double Coffees Made"
-    device_class: ""
-    state_class: "total_increasing"
   cleanings:
     id: num_clean
     name: "Cleanings Performed"
-    device_class: ""
-    state_class: "total_increasing"
 
 # All machine controls as buttons (no switches for E8)
 button:
@@ -220,7 +215,7 @@ button:
           }
 
   - platform: template
-    name: 'Menu/Back/Cancel Button'
+    name: 'Menu Back Cancel Button'
     icon: "mdi:backburger"
     id: menu_back_button
     on_press:
@@ -421,7 +416,6 @@ binary_sensor:
     id: is_brewing_sensor
     lambda: |-
       return id(is_brewing);
-    update_interval: 1s
 
   - platform: status
     name: "${friendly_name} Status"
