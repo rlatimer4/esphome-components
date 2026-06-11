@@ -43,16 +43,35 @@ This component works with Jura coffee machines that have:
 
 ## Installation
 
-### Step 1: Download the Component
+### Step 1: Add the Component
 
-Create a `jura` folder in your ESPHome configuration directory and add these files:
+The easiest way is to pull the component straight from this repository:
+
+```yaml
+external_components:
+  - source: github://rlatimer4/esphome-components
+    components: [jura]
+```
+
+Alternatively, for local development, create a components folder next to your
+device YAML and point `external_components` at the folder that *contains* the
+`jura` directory:
 
 ```
 your_esphome_config/
 ├── your_device.yaml
-└── jura/
-    ├── __init__.py
-    └── jura.h
+└── my_components/
+    └── jura/
+        ├── __init__.py
+        ├── jura.h
+        └── jura.cpp
+```
+
+```yaml
+external_components:
+  - source:
+      type: local
+      path: my_components
 ```
 
 ### Step 2: Hardware Connection
@@ -65,15 +84,9 @@ Connect your ESP32 to the Jura machine:
 
 ### Step 3: ESPHome Configuration
 
-Use the provided `jura_coffee.yaml` as your configuration template. Key features:
+Use the provided `example_jura.yaml` as your configuration template. Key features:
 
 ```yaml
-# External component
-external_components:
-  - source:
-      type: local
-      path: jura
-
 # Enhanced Jura component
 jura:
   uart_id: uart_bus
@@ -177,8 +190,8 @@ Navigate through cleaning, maintenance, settings, and configuration options.
 ### Common Issues
 
 **No sensor data:**
-- Check UART wiring (TX/RX may be swapped)  
-- Verify baud rate is 9600
+- Check UART wiring (TX/RX may be swapped)
+- The component validates at compile time that the UART is set to 9600 baud
 - Increase `timeout_ms` if needed
 
 **Screen tracking incorrect:**
@@ -232,4 +245,10 @@ automation:
       entity_id: switch.coffee_machine_power
 ```
 
-## Advance
+## Protocol Notes
+
+The Jura service protocol obfuscates each data byte across four UART bytes
+(two bits per byte, carried in bits 2 and 5) at 9600 baud, with an ~8 ms gap
+between encoded bytes. The component implements this as a non-blocking state
+machine in `loop()`, so polling the machine never stalls the ESPHome main
+loop — even when the machine is off or disconnected and the request times out.
