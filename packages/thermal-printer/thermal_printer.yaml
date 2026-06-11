@@ -14,20 +14,40 @@
 #
 # Required configuration in main device YAML:
 #   substitutions:
+#     api_key: !secret api_encryption_key      # API encryption key
+#
+# Optional substitutions (defaults are provided below and can be overridden):
 #     printer_name: "thermal_printer"          # Device name
 #     printer_uart_tx: "GPIO1"                 # UART TX pin
-#     printer_uart_rx: "GPIO3"                 # UART RX pin  
+#     printer_uart_rx: "GPIO3"                 # UART RX pin
 #     printer_baud_rate: "19200"               # Baud rate
 #     paper_roll_length: "30000"               # Paper roll length in mm
 #     queue_max_size: "20"                     # Maximum queue size
 #     print_delay_ms: "800"                    # Delay between jobs
-#
-# Optional substitutions:
 #     enable_dtr: "false"                      # Enable DTR handshaking
-#     dtr_pin: "GPIO4"                         # DTR pin (if enabled)
+#     dtr_pin: "GPIO4"                         # DTR pin (only used if enabled)
 #     heat_dots: "7"                           # Heat dots (1-15)
 #     heat_time: "80"                          # Heat time (50-200)
 #     heat_interval: "2"                       # Heat interval (1-10)
+#     startup_message: "true"                  # Print banner on boot
+#     auto_sleep: "true"                       # Sleep printer after 5 min idle
+
+# Default substitutions - any of these can be overridden from the device YAML
+substitutions:
+  printer_name: "thermal_printer"
+  printer_uart_tx: "GPIO1"
+  printer_uart_rx: "GPIO3"
+  printer_baud_rate: "19200"
+  paper_roll_length: "30000"
+  queue_max_size: "20"
+  print_delay_ms: "800"
+  enable_dtr: "false"
+  dtr_pin: "GPIO4"
+  heat_dots: "7"
+  heat_time: "80"
+  heat_interval: "2"
+  startup_message: "true"
+  auto_sleep: "true"
 
 # External components - thermal printer with queue system
 external_components:
@@ -49,13 +69,14 @@ uart:
 # ===== THERMAL PRINTER CORE COMPONENT =====
 
 thermal_printer:
-  id: ${printer_name}
+  id: ${printer_name}_component
   uart_id: ${printer_name}_uart
   
   # Basic Configuration
   paper_roll_length: ${paper_roll_length}
   line_height_calibration: 4.0
-  startup_message: true
+  startup_message: ${startup_message}
+  auto_sleep: ${auto_sleep}
   
   # Heat Configuration
   heat_dots: ${heat_dots}
@@ -90,7 +111,7 @@ api:
         inverse: bool
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             
             // Check if queue is full before adding
             if (printer->is_queue_full()) {
@@ -118,7 +139,7 @@ api:
         barcode_data: string
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             
             if (printer->is_queue_full()) {
               ESP_LOGW("${printer_name}", "Queue full! Cannot add barcode job");
@@ -137,7 +158,7 @@ api:
         label: string
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             
             if (printer->is_queue_full()) {
               ESP_LOGW("${printer_name}", "Queue full! Cannot add QR job");
@@ -162,7 +183,7 @@ api:
         text_size: string
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             
             if (printer->is_queue_full()) {
               ESP_LOGW("${printer_name}", "Queue full! Cannot add two-column job");
@@ -185,7 +206,7 @@ api:
         header: bool
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             
             if (printer->is_queue_full()) {
               ESP_LOGW("${printer_name}", "Queue full! Cannot add table row job");
@@ -202,7 +223,7 @@ api:
         lines: int
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             
             if (printer->is_queue_full()) {
               ESP_LOGW("${printer_name}", "Queue full! Cannot add feed job");
@@ -218,7 +239,7 @@ api:
     - action: ${printer_name}_clear_queue
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             printer->clear_queue();
             ESP_LOGI("${printer_name}", "Print queue cleared by user");
 
@@ -226,14 +247,14 @@ api:
     - action: ${printer_name}_process_queue
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             printer->process_queue();
 
     # Flush queue and wait for completion
     - action: ${printer_name}_flush_queue
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             ESP_LOGI("${printer_name}", "Flushing queue...");
             printer->flush_queue_and_wait();
 
@@ -245,7 +266,7 @@ api:
         auto_process: bool
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             printer->set_max_queue_size(max_size);
             printer->set_print_delay(delay_ms);
             printer->enable_auto_queue_processing(auto_process);
@@ -261,7 +282,7 @@ api:
         separator: string
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             std::string text = lines;
             std::string sep = separator.empty() ? "\n" : separator;
             
@@ -298,7 +319,7 @@ api:
         add_date: bool
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             
             if (printer->is_queue_full()) {
               ESP_LOGW("${printer_name}", "Queue full! Cannot print receipt");
@@ -359,7 +380,7 @@ api:
     - action: ${printer_name}_wake_printer
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             ESP_LOGI("${printer_name}", "Immediate wake (bypassing queue)");
             printer->wake();
 
@@ -367,7 +388,7 @@ api:
     - action: ${printer_name}_sleep_printer
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             ESP_LOGI("${printer_name}", "Immediate sleep (bypassing queue)");
             printer->sleep();
 
@@ -375,7 +396,7 @@ api:
     - action: ${printer_name}_test_print
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             ESP_LOGI("${printer_name}", "Immediate test print (bypassing queue)");
             printer->test();
 
@@ -383,7 +404,7 @@ api:
     - action: ${printer_name}_reset_paper_usage
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             printer->reset_paper_usage();
 
     # Set paper roll length
@@ -392,14 +413,14 @@ api:
         length_mm: float
       then:
         - lambda: |-
-            auto printer = id(${printer_name});
+            auto printer = id(${printer_name}_component);
             printer->set_paper_roll_length(length_mm);
 
 # ===== SENSORS =====
 
 text_sensor:
   - platform: thermal_printer
-    thermal_printer_id: ${printer_name}
+    thermal_printer_id: ${printer_name}_component
     name: "${printer_name} Paper Status"
     id: ${printer_name}_paper_status
 
@@ -407,7 +428,7 @@ text_sensor:
     name: "${printer_name} Enhanced Status"
     id: ${printer_name}_status_enhanced
     lambda: |-
-      auto printer = id(${printer_name});
+      auto printer = id(${printer_name}_component);
       char status[100];
       snprintf(status, sizeof(status), "%s | Queue: %d/%d | Processed: %d", 
                printer->has_paper() ? "Paper OK" : "Paper Out",
@@ -419,7 +440,7 @@ text_sensor:
 
 binary_sensor:
   - platform: thermal_printer
-    thermal_printer_id: ${printer_name}
+    thermal_printer_id: ${printer_name}_component
     name: "${printer_name} Paper Loaded"
     id: ${printer_name}_paper_loaded
 
@@ -428,14 +449,14 @@ binary_sensor:
     id: ${printer_name}_queue_processing
     device_class: running
     lambda: |-
-      return id(${printer_name})->is_processing();
+      return id(${printer_name}_component)->is_processing();
 
   - platform: template
     name: "${printer_name} Queue Full"
     id: ${printer_name}_queue_full
     device_class: problem
     lambda: |-
-      return id(${printer_name})->is_queue_full();
+      return id(${printer_name}_component)->is_queue_full();
 
 sensor:
   - platform: template
@@ -446,7 +467,7 @@ sensor:
     accuracy_decimals: 1
     state_class: total_increasing
     lambda: |-
-      return id(${printer_name})->get_paper_usage_mm();
+      return id(${printer_name}_component)->get_paper_usage_mm();
     update_interval: 30s
 
   - platform: template
@@ -456,7 +477,7 @@ sensor:
     unit_of_measurement: "%"
     accuracy_decimals: 1
     lambda: |-
-      return id(${printer_name})->get_paper_usage_percent();
+      return id(${printer_name}_component)->get_paper_usage_percent();
     update_interval: 30s
 
   - platform: template
@@ -465,7 +486,7 @@ sensor:
     icon: mdi:format-line-spacing
     state_class: total_increasing
     lambda: |-
-      return id(${printer_name})->get_lines_printed();
+      return id(${printer_name}_component)->get_lines_printed();
     update_interval: 30s
 
   - platform: template
@@ -474,7 +495,7 @@ sensor:
     icon: mdi:alphabetical
     state_class: total_increasing
     lambda: |-
-      return id(${printer_name})->get_characters_printed();
+      return id(${printer_name}_component)->get_characters_printed();
     update_interval: 30s
 
   # ===== QUEUE STATISTICS SENSORS =====
@@ -484,7 +505,7 @@ sensor:
     id: ${printer_name}_queue_size
     icon: mdi:view-list
     lambda: |-
-      return id(${printer_name})->get_queue_size();
+      return id(${printer_name}_component)->get_queue_size();
     update_interval: 2s
 
   - platform: template
@@ -493,7 +514,7 @@ sensor:
     icon: mdi:counter
     state_class: total_increasing
     lambda: |-
-      return id(${printer_name})->get_total_jobs_processed();
+      return id(${printer_name}_component)->get_total_jobs_processed();
     update_interval: 30s
 
   - platform: template
@@ -502,7 +523,7 @@ sensor:
     icon: mdi:alert-circle
     state_class: total_increasing
     lambda: |-
-      return id(${printer_name})->get_jobs_dropped();
+      return id(${printer_name}_component)->get_jobs_dropped();
     update_interval: 30s
 
   - platform: template
@@ -512,7 +533,7 @@ sensor:
     unit_of_measurement: "%"
     accuracy_decimals: 1
     lambda: |-
-      auto printer = id(${printer_name});
+      auto printer = id(${printer_name}_component);
       uint32_t total = printer->get_total_jobs_processed();
       uint32_t dropped = printer->get_jobs_dropped();
       
@@ -532,10 +553,10 @@ switch:
     optimistic: true
     turn_on_action:
       - lambda: |-
-          id(${printer_name})->wake();
+          id(${printer_name}_component)->wake();
     turn_off_action:
       - lambda: |-
-          id(${printer_name})->sleep();
+          id(${printer_name}_component)->sleep();
 
   - platform: template
     name: "${printer_name} Auto Queue Processing"
@@ -545,11 +566,11 @@ switch:
     restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
       - lambda: |-
-          id(${printer_name})->enable_auto_queue_processing(true);
+          id(${printer_name}_component)->enable_auto_queue_processing(true);
           ESP_LOGI("${printer_name}", "Auto queue processing enabled");
     turn_off_action:
       - lambda: |-
-          id(${printer_name})->enable_auto_queue_processing(false);
+          id(${printer_name}_component)->enable_auto_queue_processing(false);
           ESP_LOGI("${printer_name}", "Auto queue processing disabled");
 
 number:
@@ -565,7 +586,7 @@ number:
     optimistic: true
     set_action:
       - lambda: |-
-          id(${printer_name})->set_max_queue_size(x);
+          id(${printer_name}_component)->set_max_queue_size(x);
           ESP_LOGI("${printer_name}", "Queue max size set to %d", (int)x);
 
   - platform: template
@@ -580,7 +601,7 @@ number:
     optimistic: true
     set_action:
       - lambda: |-
-          id(${printer_name})->set_print_delay(x);
+          id(${printer_name}_component)->set_print_delay(x);
           ESP_LOGI("${printer_name}", "Print delay set to %dms", (int)x);
 
 button:
@@ -590,7 +611,7 @@ button:
     icon: mdi:printer-check
     on_press:
       - lambda: |-
-          auto printer = id(${printer_name});
+          auto printer = id(${printer_name}_component);
           printer->test();
 
   - platform: template
@@ -599,7 +620,7 @@ button:
     icon: mdi:delete-sweep
     on_press:
       - lambda: |-
-          auto printer = id(${printer_name});
+          auto printer = id(${printer_name}_component);
           ESP_LOGI("${printer_name}", "Clearing queue via button press");
           printer->clear_queue();
 
@@ -609,7 +630,7 @@ button:
     icon: mdi:play
     on_press:
       - lambda: |-
-          auto printer = id(${printer_name});
+          auto printer = id(${printer_name}_component);
           ESP_LOGI("${printer_name}", "Manual queue processing triggered");
           printer->process_queue();
 
@@ -619,7 +640,7 @@ button:
     icon: mdi:file-export
     on_press:
       - lambda: |-
-          auto printer = id(${printer_name});
+          auto printer = id(${printer_name}_component);
           ESP_LOGI("${printer_name}", "Flushing queue via button press");
           printer->flush_queue_and_wait();
 
@@ -629,7 +650,7 @@ button:
     icon: mdi:test-tube
     on_press:
       - lambda: |-
-          auto printer = id(${printer_name});
+          auto printer = id(${printer_name}_component);
           ESP_LOGI("${printer_name}", "Running queue test...");
           
           // Only run test if queue has space

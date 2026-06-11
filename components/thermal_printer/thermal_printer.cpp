@@ -55,30 +55,43 @@ void ThermalPrinterComponent::setup() {
   this->clear_queue();
   this->last_job_time_ = 0;
   this->is_processing_job_ = false;
-  
-  ESP_LOGCONFIG(TAG, "Printer setup complete - DTR: %s, Queue: %d max", 
+  this->last_activity_time_ = millis();
+
+  if (this->startup_message_) {
+    // Defer the startup message so it doesn't block the rest of boot
+    this->set_timeout("startup_message", 3000, [this]() { this->print_startup_message(); });
+  }
+
+  ESP_LOGCONFIG(TAG, "Printer setup complete - DTR: %s, Queue: %d max",
                 this->is_dtr_enabled() ? "ENABLED" : "Disabled", this->max_queue_size_);
 }
 
 void ThermalPrinterComponent::loop() {
-  // Check paper status periodically
-  if (millis() - this->last_paper_check_ > 10000) {
+  // Check paper status periodically (skip while asleep to avoid waking the printer)
+  if (!this->is_asleep_ && millis() - this->last_paper_check_ > 10000) {
     this->last_paper_check_ = millis();
     bool current_status = this->has_paper();
     if (current_status != this->paper_status_) {
       this->paper_status_ = current_status;
-      if (this->paper_check_callback_) {
-        this->paper_check_callback_.value()(current_status);
+      for (auto &callback : this->paper_check_callbacks_) {
+        callback(current_status);
       }
     }
   }
-  
+
   // Process print queue automatically if enabled
   if (this->auto_process_queue_ && !this->print_queue_.empty()) {
-    if (!this->is_processing_job_ && 
+    if (!this->is_processing_job_ &&
         (millis() - this->last_job_time_) >= this->print_delay_ms_) {
       this->process_queue();
     }
+  }
+
+  // Auto-sleep after 5 minutes of inactivity with an empty queue
+  if (this->auto_sleep_ && !this->is_asleep_ && this->print_queue_.empty() &&
+      (millis() - this->last_activity_time_) > 300000) {
+    ESP_LOGI(TAG, "Auto-sleeping printer after inactivity");
+    this->sleep();
   }
 }
 
@@ -203,6 +216,8 @@ void ThermalPrinterComponent::wake() {
     delay(50);
   }
   this->set_heat_config(this->heat_dots_, this->heat_time_, this->heat_interval_);
+  this->is_asleep_ = false;
+  this->last_activity_time_ = millis();
 }
 
 void ThermalPrinterComponent::sleep() {
@@ -210,6 +225,7 @@ void ThermalPrinterComponent::sleep() {
   this->write_byte_with_flow_control('8');
   this->write_byte_with_flow_control(0);
   this->write_byte_with_flow_control(0);
+  this->is_asleep_ = true;
 }
 
 void ThermalPrinterComponent::reset() {
@@ -382,11 +398,12 @@ void ThermalPrinterComponent::print_text(const char *text) {
 
 void ThermalPrinterComponent::print_two_column(const char *left_text, const char *right_text, bool fill_dots, char text_size) {
   this->set_size(text_size);
-  
-  uint8_t line_width = 32;
-  if (text_size == 'M') line_width = 24;
-  else if (text_size == 'L') line_width = 16;
-  
+
+  // Medium/large glyphs are wider, so fewer characters fit per line
+  uint8_t line_width = this->chars_per_line_;
+  if (text_size == 'M') line_width = (this->chars_per_line_ * 3) / 4;
+  else if (text_size == 'L') line_width = this->chars_per_line_ / 2;
+
   char pad_char = fill_dots ? '.' : ' ';
   this->print_padded_line(left_text, right_text, line_width, pad_char);
   this->set_size('S');
@@ -443,8 +460,8 @@ void ThermalPrinterComponent::set_line_height_calibration(float mm_per_line) {
   this->line_height_mm_ = mm_per_line;
 }
 
-void ThermalPrinterComponent::set_paper_check_callback(std::function<void(bool)> &&callback) {
-  this->paper_check_callback_ = callback;
+void ThermalPrinterComponent::add_paper_check_callback(std::function<void(bool)> &&callback) {
+  this->paper_check_callbacks_.push_back(std::move(callback));
 }
 
 // ===== ENHANCED PRINTING METHODS =====
@@ -719,17 +736,23 @@ void ThermalPrinterComponent::process_queue() {
   }
   
   this->is_processing_job_ = true;
-  
+
+  // Wake the printer if it was auto-slept
+  if (this->is_asleep_) {
+    this->wake();
+  }
+
   PrintJob job = this->print_queue_.front();
   this->print_queue_.pop();
-  
-  ESP_LOGD(TAG, "Processing job type %d (queue now: %d)", 
+
+  ESP_LOGD(TAG, "Processing job type %d (queue now: %d)",
            static_cast<int>(job.type), this->get_queue_size());
-  
+
   this->execute_print_job(job);
-  
+
   this->total_jobs_processed_++;
   this->last_job_time_ = millis();
+  this->last_activity_time_ = millis();
   this->is_processing_job_ = false;
   
   // Log queue stats periodically
@@ -832,7 +855,8 @@ void ThermalPrinterComponent::flush_queue_and_wait() {
   
   while (!this->print_queue_.empty() && (millis() - start_time) < timeout_ms) {
     this->process_queue();
-    delay(100); // Small delay to prevent busy waiting
+    App.feed_wdt();  // This can block for many seconds; keep the watchdog happy
+    delay(100);      // Small delay to prevent busy waiting
   }
   
   if (this->print_queue_.empty()) {
@@ -887,13 +911,13 @@ void ThermalPrinterComponent::load_usage_from_flash() {
 }
 
 void ThermalPrinterComponent::print_padded_line(const char *left, const char *right, uint8_t total_width, char pad_char) {
-  uint8_t left_len = strlen(left);
-  uint8_t right_len = strlen(right);
-  uint8_t padding = total_width - left_len - right_len;
+  // Use signed math: if the texts are longer than the line, unsigned
+  // subtraction would wrap around and print hundreds of pad characters
+  int padding = (int) total_width - (int) strlen(left) - (int) strlen(right);
   if (padding < 1) padding = 1;
-  
+
   this->print(left);
-  for (uint8_t i = 0; i < padding; i++) {
+  for (int i = 0; i < padding; i++) {
     this->write(pad_char);
   }
   this->print(right);
@@ -999,14 +1023,17 @@ void ThermalPrinterComponent::offline() {
 void ThermalPrinterComponent::print_table_row(const char *col1, const char *col2, const char *col3) {
   if (col3 == nullptr) {
     // Two column table
-    this->print_padded_line(col1, col2, 32, ' ');
+    this->print_padded_line(col1, col2, this->chars_per_line_, ' ');
   } else {
-    // Three column table (10 chars each + 2 spaces)
-    char line[33];
-    snprintf(line, sizeof(line), "%-10.10s %-10.10s %-10.10s", col1, col2, col3);
+    // Three column table - divide configured line width evenly (minus 2 separators)
+    int col_width = (this->chars_per_line_ - 2) / 3;
+    if (col_width < 1) col_width = 1;
+    char line[65];
+    snprintf(line, sizeof(line), "%-*.*s %-*.*s %-*.*s",
+             col_width, col_width, col1, col_width, col_width, col2, col_width, col_width, col3);
     this->print(line);
     this->print("\n");
-    
+
     this->track_print_operation(strlen(line) + 1, 1, 0);
   }
 }
@@ -1061,7 +1088,7 @@ uint16_t ThermalPrinterComponent::estimate_lines_for_text(const char* text) {
       current_line_length = 0;
     } else {
       current_line_length++;
-      if (current_line_length >= 32) {
+      if (current_line_length >= this->chars_per_line_) {
         lines++;
         current_line_length = 0;
       }

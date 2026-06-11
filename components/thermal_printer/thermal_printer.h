@@ -5,6 +5,7 @@
 #include "esphome/core/log.h"
 #include "esphome/core/gpio.h"
 #include <queue>
+#include <vector>
 #include <functional>
 
 namespace esphome {
@@ -146,7 +147,12 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   void print_two_column(const char *left_text, const char *right_text, bool fill_dots = true, char text_size = 'S');
   void print_table_row(const char *col1, const char *col2, const char *col3 = nullptr);
   bool has_paper();
-  void set_paper_check_callback(std::function<void(bool)> &&callback);
+  // Multiple listeners (binary sensor, text sensor, ...) may register; all are called
+  void add_paper_check_callback(std::function<void(bool)> &&callback);
+  void set_paper_check_callback(std::function<void(bool)> &&callback) {
+    this->add_paper_check_callback(std::move(callback));
+  }
+  bool get_paper_status() const { return this->paper_status_; }
   
   // Paper usage estimation
   float get_paper_usage_mm();
@@ -182,6 +188,9 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
   void set_heat_dots(uint8_t dots) { this->heat_dots_ = dots; }
   void set_heat_time(uint8_t time) { this->heat_time_ = time; }
   void set_heat_interval(uint8_t interval) { this->heat_interval_ = interval; }
+  void set_chars_per_line(uint8_t chars) { this->chars_per_line_ = chars; }
+  void set_startup_message(bool enable) { this->startup_message_ = enable; }
+  void set_auto_sleep(bool enable) { this->auto_sleep_ = enable; }
   
   // DTR handshaking core functions
   void timeout_wait();
@@ -228,8 +237,18 @@ class ThermalPrinterComponent : public Component, public uart::UARTDevice, publi
  protected:
   uint32_t last_paper_check_{0};
   bool paper_status_{true};
-  optional<std::function<void(bool)>> paper_check_callback_;
-  
+  std::vector<std::function<void(bool)>> paper_check_callbacks_;
+
+  // Configurable line width (depends on paper width / printer model)
+  uint8_t chars_per_line_{32};
+
+  // Startup message / auto sleep
+  bool startup_message_{true};
+  bool auto_sleep_{true};
+  bool is_asleep_{false};
+  uint32_t last_activity_time_{0};
+
+
   // Paper usage tracking
   uint32_t lines_printed_{0};
   uint32_t characters_printed_{0};

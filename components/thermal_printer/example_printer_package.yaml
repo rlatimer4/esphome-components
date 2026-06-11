@@ -4,40 +4,47 @@
 esphome:
   name: kitchen-printer
   friendly_name: Kitchen Thermal Printer
-  platform: ESP8266
+
+# Platform configuration (the old `esphome: platform:` syntax was removed from ESPHome)
+esp8266:
   board: d1_mini
 
 # ===== PACKAGE CONFIGURATION =====
 # Define all required substitutions for the package
 
 substitutions:
-  # Required - Printer Configuration
+  # API encryption key used by the package's `api:` block
+  api_key: !secret api_encryption_key
+
+  # Printer Configuration
   printer_name: "kitchen_printer"
   printer_uart_tx: "GPIO1"      # Hardware UART0 TX
   printer_uart_rx: "GPIO3"      # Hardware UART0 RX
-  printer_baud_rate: "9600"    # Recommended baud rate
-  
-  # Required - Paper Management
+  printer_baud_rate: "9600"     # Match your printer (9600 or 19200 are common)
+
+  # Paper Management
   paper_roll_length: "30000"    # 30 meters in mm
-  
-  # Required - Queue Configuration  
+
+  # Queue Configuration
   queue_max_size: "20"          # Maximum jobs in queue
   print_delay_ms: "800"         # Delay between jobs (ms)
-  
-  # Optional - Heat Settings (conservative defaults)
+
+  # Heat Settings (conservative defaults)
   heat_dots: "8"                # Heat dots (1-15)
   heat_time: "80"               # Heat time (50-200)
   heat_interval: "2"            # Heat interval (1-10)
-  
-  # Optional - DTR Handshaking (disabled by default)
+
+  # DTR Handshaking (disabled by default)
   enable_dtr: "false"           # Set to "true" to enable DTR
   dtr_pin: "GPIO4"              # DTR pin (only used if enable_dtr is true)
 
-# Import the thermal printer package
+# Import the thermal printer package from GitHub
 packages:
-  remote_package_files:
-    url: https://github.com/rlatimer4/esphome-components/blob/master/packages/thermal-printer/thermal_printer.yaml
-    files: [thermal_printer.yaml]  
+  thermal_printer:
+    url: https://github.com/rlatimer4/esphome-components
+    ref: master
+    files: [packages/thermal-printer/thermal_printer.yaml]
+    refresh: 1d
 # ===== DEVICE-SPECIFIC CONFIGURATION =====
 
 # WiFi Configuration
@@ -63,10 +70,7 @@ ota:
   - platform: esphome
     password: !secret ota_password
 
-# Home Assistant API
-api:
-  encryption:
-    key: !secret api_encryption_key
+# Home Assistant API is configured by the package (using the api_key substitution)
 
 # Status LED (optional)
 status_led:
@@ -100,7 +104,7 @@ time:
         hours: 8
         then:
           - lambda: |-
-              auto printer = id(kitchen_printer);
+              auto printer = id(kitchen_printer_component);
               
               // Print daily header
               printer->queue_text_job("=== DAILY SUMMARY ===", 2, 1, true, false, false);
@@ -135,7 +139,7 @@ button:
     icon: mdi:cart
     on_press:
       - lambda: |-
-          auto printer = id(kitchen_printer);
+          auto printer = id(kitchen_printer_component);
           
           // Print a sample shopping list
           printer->queue_text_job("SHOPPING LIST", 2, 1, true, false, false);
@@ -165,7 +169,7 @@ button:
     icon: mdi:wifi
     on_press:
       - lambda: |-
-          auto printer = id(kitchen_printer);
+          auto printer = id(kitchen_printer_component);
           
           printer->queue_text_job("NETWORK INFO", 2, 1, true, false, false);
           printer->queue_feed_job(1);
@@ -190,48 +194,34 @@ switch:
     turn_on_action:
       - lambda: |-
           // Configure printer for kitchen use (faster, more informal)
-          auto printer = id(kitchen_printer);
+          auto printer = id(kitchen_printer_component);
           printer->set_print_delay(600); // Faster for quick notes
           ESP_LOGI("kitchen_printer", "Kitchen mode enabled - faster printing");
     turn_off_action:
       - lambda: |-
           // Configure printer for general use
-          auto printer = id(kitchen_printer);
+          auto printer = id(kitchen_printer_component);
           printer->set_print_delay(800); // Standard delay
           ESP_LOGI("kitchen_printer", "Standard mode enabled");
 
 # ===== ADVANCED PACKAGE USAGE EXAMPLES =====
 
-# Create custom receipt templates using the package services
-script:
-  - id: print_coffee_receipt
-    alias: "Print Coffee Receipt"
-    sequence:
-      - service: esphome.kitchen_printer_print_receipt
-        data:
-          business_name: "Kitchen Cafe"
-          items: |
-            Espresso x1
-            Croissant x1
-            Orange Juice x1
-          total: "$8.50"
-          add_date: true
-
-  - id: print_todo_from_ha
-    alias: "Print TODO List from Home Assistant"  
-    sequence:
-      # This would integrate with your Home Assistant TODO lists
-      - service: esphome.kitchen_printer_print_text_lines
-        data:
-          lines: |
-            TODAY'S TASKS
-            ============
-            [ ] Take out trash
-            [ ] Water plants
-            [ ] Call dentist
-            [ ] Buy groceries
-            [ ] Walk the dog
-          separator: "\n"
+# Example Home Assistant scripts using the package's services
+# (These would go in your Home Assistant configuration, NOT in this ESPHome file)
+#
+# script:
+#   print_coffee_receipt:
+#     alias: "Print Coffee Receipt"
+#     sequence:
+#       - action: esphome.kitchen_printer_print_receipt
+#         data:
+#           business_name: "Kitchen Cafe"
+#           items: |
+#             Espresso x1
+#             Croissant x1
+#             Orange Juice x1
+#           total: "$8.50"
+#           add_date: true
 
 # Example integration with Home Assistant entities
 # (These would go in your Home Assistant configuration.yaml)
@@ -243,8 +233,8 @@ script:
 #       - platform: state
 #         entity_id: binary_sensor.doorbell
 #         to: 'on'
-#     action:
-#       - service: esphome.kitchen_printer_print_text
+#     actions:
+#       - action: esphome.kitchen_printer_print_text
 #         data:
 #           message: "Visitor at {{ now().strftime('%H:%M') }}"
 #           text_size: "M"
