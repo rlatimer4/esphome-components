@@ -4,6 +4,7 @@
 esphome:
   name: kitchen-printer
   friendly_name: Kitchen Thermal Printer
+  min_version: 2026.11.0
 
 # Platform configuration (the old `esphome: platform:` syntax was removed from ESPHome)
 esp8266:
@@ -60,7 +61,7 @@ captive_portal:
 
 # Logging Configuration
 logger:
-  level: INFO
+  level: DEBUG
   logs:
     thermal_printer: DEBUG
     uart: INFO
@@ -68,7 +69,11 @@ logger:
 # OTA Updates
 ota:
   - platform: esphome
-    password: !secret ota_password
+    # Encrypted OTA (ESPHome 2026.x) reuses the `api: encryption: key`.
+    # Migrating a device that still runs password-protected OTA firmware?
+    # For that one upload, add `allow_plaintext_upload: true` under
+    # `encryption:` (and keep `password:` alongside it), then remove both.
+    encryption:
 
 # Home Assistant API is configured by the package (using the api_key substitution)
 
@@ -82,6 +87,7 @@ status_led:
 web_server:
   port: 80
   version: 2
+  ota: false  # keep firmware uploads on the encrypted OTA channel only
 
 # Device-specific sensors (optional)
 sensor:
@@ -229,8 +235,8 @@ switch:
 # Example automation to print when doorbell is pressed:
 # automation:
 #   - alias: "Print Visitor Log"
-#     trigger:
-#       - platform: state
+#     triggers:
+#       - trigger: state
 #         entity_id: binary_sensor.doorbell
 #         to: 'on'
 #     actions:

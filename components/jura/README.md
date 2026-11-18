@@ -34,6 +34,10 @@ This component works with Jura coffee machines that have:
 - Jura S8
 - Other models with similar button layouts
 
+## Software Requirements
+
+**Built with ESPHome 2026.11.0.** Home Assistant automation examples use the current `triggers:`/`actions:` syntax (Home Assistant 2024.10 and later, including 2026.11). The example configs set `min_version: 2026.11.0` and use encrypted OTA (`ota: encryption:`), which reuses the API encryption key. If a device still runs password-protected OTA firmware, add `allow_plaintext_upload: true` under `encryption:` (keeping `password:`) for the first upload, then remove both.
+
 ## Hardware Requirements
 
 - ESP32 development board
@@ -220,29 +224,30 @@ logger:
 ```yaml
 automation:
   - alias: "Daily coffee limit reached"
-    trigger:
-      platform: numeric_state
-      entity_id: sensor.total_coffees_made_today
-      above: 10
-    action:
-      service: notify.mobile_app
-      data:
-        message: "Maybe switch to decaf? ☕"
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.total_coffees_made_today
+        above: 10
+    actions:
+      - action: notify.mobile_app
+        data:
+          message: "Maybe switch to decaf? ☕"
 ```
 
 ### Auto-power Off
 ```yaml
 automation:
   - alias: "Coffee machine auto-off"
-    trigger:
-      platform: state
-      entity_id: binary_sensor.is_brewing
-      from: 'on'
-      to: 'off'
-      for: '02:00:00'
-    action:
-      service: switch.turn_off
-      entity_id: switch.coffee_machine_power
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.is_brewing
+        from: 'on'
+        to: 'off'
+        for: '02:00:00'
+    actions:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.coffee_machine_power
 ```
 
 ## Protocol Notes

@@ -11,6 +11,10 @@ A **pure custom ESPHome implementation** for thermal printers, specifically desi
 ✅ **Memory Efficient** - Optimized for ESP8266 constraints  
 ✅ **Reliable Communication** - Direct UART control with proper error handling
 
+## Software Requirements
+
+**Built with ESPHome 2026.11.0.** Home Assistant automation examples use the current `triggers:`/`actions:` syntax (Home Assistant 2024.10 and later, including 2026.11). The example configs set `min_version: 2026.11.0` and use encrypted OTA (`ota: encryption:`), which reuses the API encryption key. If a device still runs password-protected OTA firmware, add `allow_plaintext_upload: true` under `encryption:` (keeping `password:`) for the first upload, then remove both.
+
 ## Hardware Requirements
 
 - **ESP8266 D1 Mini** (or compatible)
@@ -249,7 +253,7 @@ sensor_value: "{{ states('sensor.thermal_printer_paper_usage_percent') }}%"
 
 4. **Compilation errors**
    - Ensure all component files are in correct locations
-   - Check ESPHome version compatibility
+   - Check ESPHome version compatibility (tested with 2026.11.0)
    - Verify YAML syntax
 
 ### Debug Mode
