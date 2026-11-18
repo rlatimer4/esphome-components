@@ -61,6 +61,9 @@ captive_portal:
 
 # Logging Configuration
 logger:
+  # GPIO1/GPIO3 (UART0) are used by the printer, so keep logs off the serial
+  # port; they still stream over the API / ESPHome dashboard.
+  baud_rate: 0
   level: DEBUG
   logs:
     thermal_printer: DEBUG
