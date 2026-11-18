@@ -8,6 +8,7 @@ esphome:
   name: ${devicename}
   friendly_name: ${friendly_name}
   comment: ${device_description}
+  min_version: 2026.11.0
 
 esp32:
   board: esp32dev
@@ -29,7 +30,11 @@ api:
 
 ota:
   - platform: esphome
-    password: !secret ota_password
+    # Encrypted OTA (ESPHome 2026.x) reuses the `api: encryption: key`.
+    # Migrating a device that still runs password-protected OTA firmware?
+    # For that one upload, add `allow_plaintext_upload: true` under
+    # `encryption:` (and keep `password:` alongside it), then remove both.
+    encryption:
 
 logger:
   level: DEBUG
