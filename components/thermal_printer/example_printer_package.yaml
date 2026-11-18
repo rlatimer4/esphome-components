@@ -209,11 +209,16 @@ switch:
 # Example Home Assistant scripts using the package's services
 # (These would go in your Home Assistant configuration, NOT in this ESPHome file)
 #
+# Home Assistant names each action esphome.<device_name>_<action_name>. With
+# `name: kitchen-printer` and `printer_name: "kitchen_printer"` above, the
+# package's `${printer_name}_print_receipt` becomes
+# esphome.kitchen_printer_kitchen_printer_print_receipt.
+#
 # script:
 #   print_coffee_receipt:
 #     alias: "Print Coffee Receipt"
 #     sequence:
-#       - action: esphome.kitchen_printer_print_receipt
+#       - action: esphome.kitchen_printer_kitchen_printer_print_receipt
 #         data:
 #           business_name: "Kitchen Cafe"
 #           items: |
@@ -234,7 +239,7 @@ switch:
 #         entity_id: binary_sensor.doorbell
 #         to: 'on'
 #     actions:
-#       - action: esphome.kitchen_printer_print_text
+#       - action: esphome.kitchen_printer_kitchen_printer_print_text
 #         data:
 #           message: "Visitor at {{ now().strftime('%H:%M') }}"
 #           text_size: "M"

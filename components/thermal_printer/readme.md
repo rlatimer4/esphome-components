@@ -109,15 +109,38 @@ esphome run thermal_printer.yaml
 
 ## Usage Examples
 
+These examples call the Home Assistant actions that the package
+(`packages/thermal-printer/thermal_printer.yaml`) defines under `api: actions:`.
+
+### Action naming
+
+Every action in the package is named `${printer_name}_<action>`, and Home Assistant
+exposes ESPHome actions as `esphome.<device_name>_<action_name>`, where
+`<device_name>` is the `esphome: name:` of the node with `-` replaced by `_`.
+So the full name is:
+
+```
+esphome.<device_name>_<printer_name>_<action>
+```
+
+The examples below assume a device named `thermal-printer` and the package's
+default `printer_name: "thermal_printer"`, giving for example
+`esphome.thermal_printer_thermal_printer_print_text`. Adjust the prefix to match
+your own device name and `printer_name` substitution (check *Developer tools →
+Actions* in Home Assistant for the exact names).
+
+Home Assistant requires every field an action declares, so all fields are shown
+in each example.
+
 ### Basic Text Printing
 
 ```yaml
 # In Home Assistant automation
-- action: esphome.thermal_printer_print_text
+- action: esphome.thermal_printer_thermal_printer_print_text
   data:
-    text: "Hello World!"
-    size: "M"          # S, M, or L
-    justify: "C"       # L, C, or R  
+    message: "Hello World!"
+    text_size: "M"     # S, M, or L (anything else prints as M)
+    alignment: "C"     # L, C, or R (anything else prints as L)
     bold: true
     underline: false
     inverse: false
@@ -126,44 +149,114 @@ esphome run thermal_printer.yaml
 ### Barcode Printing
 
 ```yaml
-- action: esphome.thermal_printer_print_barcode
+- action: esphome.thermal_printer_thermal_printer_print_barcode
   data:
-    barcode_type: 8    # CODE128
+    barcode_type: 8    # CODE128 (see Barcode Types below)
     barcode_data: "123456789012"
+```
+
+### QR Code Printing
+
+```yaml
+- action: esphome.thermal_printer_thermal_printer_print_qr_code
+  data:
+    data: "https://www.home-assistant.io"
+    size: 3              # component default
+    error_correction: 1  # component default
+    label: "Scan me"     # printed small and centered above the code; "" for none
 ```
 
 ### Two-Column Printing
 
 ```yaml
 # Print receipt-style layouts
-- action: esphome.thermal_printer_print_two_column
+- action: esphome.thermal_printer_thermal_printer_print_two_column
   data:
     left_text: "Coffee"
     right_text: "$3.50"
     fill_dots: true    # Creates: Coffee...........$3.50
+    text_size: "S"     # S, M, or L (anything else prints as S)
 
-- action: esphome.thermal_printer_print_two_column
+- action: esphome.thermal_printer_thermal_printer_print_two_column
   data:
     left_text: "Tax"
     right_text: "$0.25"
     fill_dots: true    # Creates: Tax................$0.25
+    text_size: "S"
 ```
 
 ### Table Printing
 
 ```yaml
 # Three-column table
-- action: esphome.thermal_printer_print_table_row
+- action: esphome.thermal_printer_thermal_printer_print_table_row
   data:
     col1: "Item"
     col2: "Qty"
     col3: "Price"
+    header: true
 
-- action: esphome.thermal_printer_print_table_row
+- action: esphome.thermal_printer_thermal_printer_print_table_row
   data:
     col1: "Coffee"
     col2: "2"
     col3: "$7.00"
+    header: false
+
+# Two-column table row: leave col3 empty
+- action: esphome.thermal_printer_thermal_printer_print_table_row
+  data:
+    col1: "Subtotal"
+    col2: "$7.00"
+    col3: ""
+    header: false
+```
+
+### Multiple Lines and Receipts
+
+```yaml
+# Print several lines (small, left-aligned), split on `separator`
+- action: esphome.thermal_printer_thermal_printer_print_text_lines
+  data:
+    lines: "Milk|Bread|Eggs"
+    separator: "|"     # "" splits on newlines
+
+# Print a complete receipt (header, items one per line, total, footer)
+- action: esphome.thermal_printer_thermal_printer_print_receipt
+  data:
+    business_name: "Kitchen Cafe"
+    items: |
+      Espresso x1
+      Croissant x1
+    total: "$8.50"
+    add_date: true
+```
+
+### Paper Feed and Printer Control
+
+```yaml
+- action: esphome.thermal_printer_thermal_printer_feed_paper
+  data:
+    lines: 3
+
+# These bypass the queue and take no data
+- action: esphome.thermal_printer_thermal_printer_wake_printer
+- action: esphome.thermal_printer_thermal_printer_sleep_printer
+- action: esphome.thermal_printer_thermal_printer_test_print
+```
+
+### Queue Management
+
+```yaml
+- action: esphome.thermal_printer_thermal_printer_clear_queue
+- action: esphome.thermal_printer_thermal_printer_process_queue
+- action: esphome.thermal_printer_thermal_printer_flush_queue
+
+- action: esphome.thermal_printer_thermal_printer_configure_queue
+  data:
+    max_size: 20
+    delay_ms: 800
+    auto_process: true
 ```
 
 ### Paper Usage Management
@@ -173,28 +266,37 @@ esphome run thermal_printer.yaml
 sensor_value: "{{ states('sensor.thermal_printer_paper_usage_percent') }}%"
 
 # Reset paper usage counters
-- action: esphome.thermal_printer_reset_paper_usage
+- action: esphome.thermal_printer_thermal_printer_reset_paper_usage
 
 # Set custom roll length (in mm)
-- action: esphome.thermal_printer_set_paper_roll_length
+- action: esphome.thermal_printer_thermal_printer_set_paper_roll_length
   data:
     length_mm: 50000  # 50 meter roll
 ```
 
-## Available Services
+## Available Actions
 
-| Service | Parameters | Description |
-|---------|------------|-------------|
-| `print_text` | `text`, `size`, `justify`, `bold`, `underline`, `inverse` | Print formatted text |
-| `print_two_column` | `left_text`, `right_text`, `fill_dots` | Print two-column layout with optional dot leaders |
-| `print_table_row` | `col1`, `col2`, `col3` | Print table row (2 or 3 columns) |
-| `print_barcode` | `barcode_type`, `barcode_data` | Print barcode |
-| `feed_paper` | `lines` | Feed paper by specified lines |
-| `wake_printer` | - | Wake printer from sleep |
-| `sleep_printer` | - | Put printer to sleep |
-| `test_print` | - | Print test page |
+Action names below are the suffix after `esphome.<device_name>_<printer_name>_`.
+
+| Action | Fields (type) | Description |
+|--------|---------------|-------------|
+| `print_text` | `message` (string), `text_size` (string: `S`/`M`/`L`), `alignment` (string: `L`/`C`/`R`), `bold` (bool), `underline` (bool), `inverse` (bool) | Queue formatted text |
+| `print_barcode` | `barcode_type` (int, see table below), `barcode_data` (string) | Queue a barcode |
+| `print_qr_code` | `data` (string), `size` (int), `error_correction` (int), `label` (string, `""` for none) | Queue a QR code with optional label |
+| `print_two_column` | `left_text` (string), `right_text` (string), `fill_dots` (bool), `text_size` (string: `S`/`M`/`L`) | Queue a two-column line with optional dot leaders |
+| `print_table_row` | `col1` (string), `col2` (string), `col3` (string, `""` for two columns), `header` (bool) | Queue a table row |
+| `feed_paper` | `lines` (int) | Queue a paper feed |
+| `clear_queue` | - | Drop all pending jobs |
+| `process_queue` | - | Process the queue now |
+| `flush_queue` | - | Process the queue and wait until it is empty |
+| `configure_queue` | `max_size` (int), `delay_ms` (int), `auto_process` (bool) | Change queue size, delay between jobs and auto-processing |
+| `print_text_lines` | `lines` (string), `separator` (string, `""` = newline) | Queue each line as small left-aligned text |
+| `print_receipt` | `business_name` (string), `items` (string, one item per line), `total` (string), `add_date` (bool) | Queue a complete receipt |
+| `wake_printer` | - | Wake printer immediately (bypasses queue) |
+| `sleep_printer` | - | Put printer to sleep immediately (bypasses queue) |
+| `test_print` | - | Print test page immediately (bypasses queue) |
 | `reset_paper_usage` | - | Reset paper usage counters |
-| `set_paper_roll_length` | `length_mm` | Set paper roll length for usage calculation |
+| `set_paper_roll_length` | `length_mm` (float) | Set paper roll length for usage calculation |
 
 ## Barcode Types
 
